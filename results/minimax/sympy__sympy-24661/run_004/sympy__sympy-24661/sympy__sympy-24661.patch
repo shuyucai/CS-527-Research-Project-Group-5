@@ -1,0 +1,68 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..7931dd4cef 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,14 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    relational_operators = {
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1186,6 +1194,48 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    def visit_Compare(self, node):
++        # Transform relational operators (e.g., <, >, <=, >=, ==, !=)
++        # into SymPy relational classes with evaluate=False
++        left = self.visit(node.left)
++        ops = node.ops
++        comparators = [self.visit(c) for c in node.comparators]
++
++        # For a simple comparison (e.g., 1 < 2), there's one operator
++        # For chained comparisons (e.g., 1 < 2 < 3), there are multiple operators
++        # SymPy doesn't support chained comparisons directly, so we convert them
++        # to And(<class>(...), And(<class>(...), ...))
++        result = None
++        for op, comparator in zip(ops, comparators):
++            op_class = op.__class__
++            if op_class in self.relational_operators:
++                sympy_class = self.relational_operators[op_class]
++                new_node = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[left, comparator],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                if result is None:
++                    result = new_node
++                else:
++                    # Chain: combine with And
++                    result = ast.Call(
++                        func=ast.Name(id='And', ctx=ast.Load()),
++                        args=[result, new_node],
++                        keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                        starargs=None,
++                        kwargs=None
++                    )
++                # For the next iteration, the comparator becomes the left side
++                left = comparator
++            else:
++                # Unknown operator, return as is
++                return node
++
++        return result if result is not None else node
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:

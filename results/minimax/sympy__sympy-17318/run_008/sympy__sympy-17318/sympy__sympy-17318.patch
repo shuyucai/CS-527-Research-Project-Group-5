@@ -1,0 +1,43 @@
+diff --git a/sympy/simplify/sqrtdenest.py b/sympy/simplify/sqrtdenest.py
+index f0b7653ea8..e948cc83e6 100644
+--- a/sympy/simplify/sqrtdenest.py
++++ b/sympy/simplify/sqrtdenest.py
+@@ -157,9 +157,13 @@ def _sqrt_match(p):
+     elif p.is_Add:
+         pargs = sorted(p.args, key=default_sort_key)
+         if all((x**2).is_Rational for x in pargs):
+-            r, b, a = split_surds(p)
+-            res = a, b, r
+-            return list(res)
++            try:
++                r, b, a = split_surds(p)
++                res = a, b, r
++                return list(res)
++            except IndexError:
++                # split_surds can raise an IndexError if the surds cannot be split
++                return []
+         # to make the process canonical, the argument is included in the tuple
+         # so when the max is selected, it will be the largest arg having a
+         # given depth
+@@ -284,13 +288,19 @@ def _sqrtdenest_rec(expr):
+         return sqrtdenest(expr)
+     if expr.base < 0:
+         return sqrt(-1)*_sqrtdenest_rec(sqrt(-expr.base))
+-    g, a, b = split_surds(expr.base)
++    try:
++        g, a, b = split_surds(expr.base)
++    except IndexError:
++        raise SqrtdenestStopIteration
+     a = a*sqrt(g)
+     if a < b:
+         a, b = b, a
+     c2 = _mexpand(a**2 - b**2)
+     if len(c2.args) > 2:
+-        g, a1, b1 = split_surds(c2)
++        try:
++            g, a1, b1 = split_surds(c2)
++        except IndexError:
++            raise SqrtdenestStopIteration
+         a1 = a1*sqrt(g)
+         if a1 < b1:
+             a1, b1 = b1, a1

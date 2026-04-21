@@ -1,0 +1,81 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..d189c42c43 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,14 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    relational_operators = {
++        ast.Lt: 'Lt',
++        ast.Gt: 'Gt',
++        ast.LtE: 'Le',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1192,6 +1200,61 @@ def visit_Call(self, node):
+             new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
+ 
++    def visit_Compare(self, node):
++        # Transform comparison operators (e.g., <, >, <=, >=, ==, !=)
++        # into SymPy relational classes with evaluate=False
++        left = self.visit(node.left)
++        ops = node.ops
++        comparators = [self.visit(comp) for comp in node.comparators]
++
++        # For a single comparison (e.g., 1 < 2), create a single relational
++        if len(ops) == 1:
++            op_class = ops[0].__class__
++            if op_class in self.relational_operators:
++                sympy_class = self.relational_operators[op_class]
++                new_node = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[left, comparators[0]],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                return new_node
++
++        # For chained comparisons (e.g., 1 < 2 < 3), create And(relation1, relation2)
++        # Each part uses SymPy relational with evaluate=False
++        relationals = []
++        current_left = left
++        for op, comparator in zip(ops, comparators):
++            op_class = op.__class__
++            if op_class in self.relational_operators:
++                sympy_class = self.relational_operators[op_class]
++                relational = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[current_left, comparator],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                relationals.append(relational)
++            else:
++                # Unknown operator, keep as is
++                relationals.append(ast.Compare(left=current_left, ops=[op], comparators=[comparator]))
++            current_left = comparator
++
++        # Create And with evaluate=False for the chain
++        if len(relationals) == 1:
++            return relationals[0]
++        else:
++            new_node = ast.Call(
++                func=ast.Name(id='And', ctx=ast.Load()),
++                args=relationals,
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            return new_node
++
+ 
+ _transformation = {  # items can be added but never re-ordered
+ 0: lambda_notation,

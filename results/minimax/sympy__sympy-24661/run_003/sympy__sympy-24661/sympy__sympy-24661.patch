@@ -1,0 +1,47 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..1cf228bf69 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,14 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    relational_operators = {
++        ast.Lt: 'StrictLessThan',
++        ast.LtE: 'LessThan',
++        ast.Gt: 'StrictGreaterThan',
++        ast.GtE: 'GreaterThan',
++        ast.Eq: 'Equality',
++        ast.NotEq: 'Unequality',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1186,6 +1194,27 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    def visit_Compare(self, node):
++        # Transform comparison operators to SymPy relational classes
++        # e.g., 1 < 2 becomes StrictLessThan(1, 2, evaluate=False)
++        if node.ops:
++            op = node.ops[0].__class__
++            if op in self.relational_operators:
++                sympy_class = self.relational_operators[op]
++                left = self.visit(node.left)
++                right = self.visit(node.comparators[0])
++                new_node = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[left, right],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                return new_node
++        # Must call generic_visit for nodes we don't handle ourselves
++        # to ensure the children are processed
++        return self.generic_visit(node)
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:

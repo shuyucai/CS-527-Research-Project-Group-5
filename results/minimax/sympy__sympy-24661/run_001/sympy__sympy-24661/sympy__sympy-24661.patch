@@ -1,0 +1,71 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..4aabe01752 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,14 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    relational_operators = {
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1186,6 +1194,51 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    def visit_Compare(self, node):
++        # Transform comparison operators (e.g., <, >, <=, >=, ==, !=)
++        # to their SymPy equivalents with evaluate=False
++        if all(op.__class__ in self.relational_operators for op in node.ops):
++            left = self.visit(node.left)
++            sympy_class_names = [self.relational_operators[op.__class__] for op in node.ops]
++            comparators = [self.visit(c) for c in node.comparators]
++
++            if len(node.ops) == 1:
++                # Simple comparison like 1 < 2
++                sympy_class = sympy_class_names[0]
++                new_node = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[left, comparators[0]],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                return new_node
++            else:
++                # Chained comparison like 1 < 2 < 3
++                # Convert to And(Lt(1, 2, evaluate=False), Lt(2, 3, evaluate=False))
++                and_args = []
++                for i, (sympy_class, comparator) in enumerate(zip(sympy_class_names, comparators)):
++                    if i == 0:
++                        left_arg = left
++                    else:
++                        left_arg = comparators[i - 1]
++                    and_args.append(ast.Call(
++                        func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                        args=[left_arg, comparator],
++                        keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                        starargs=None,
++                        kwargs=None
++                    ))
++                new_node = ast.Call(
++                    func=ast.Name(id='And', ctx=ast.Load()),
++                    args=and_args,
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                return new_node
++        return node
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:

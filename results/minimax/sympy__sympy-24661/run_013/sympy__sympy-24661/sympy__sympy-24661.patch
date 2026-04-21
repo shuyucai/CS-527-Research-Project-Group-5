@@ -1,0 +1,73 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..dd371625f4 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,14 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    relational_operators = {
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1192,6 +1200,53 @@ def visit_Call(self, node):
+             new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
+ 
++    def visit_Compare(self, node):
++        # Transform comparison operators
++        # Transform each operator in the chain
++        # Returns an And of all comparisons if there's more than one,
++        # otherwise returns the single comparison
++        ops = node.ops
++        comparators = node.comparators
++        left = self.visit(node.left)
++
++        # Build a list of comparison pairs
++        comparisons = []
++        for op, comparator in zip(ops, comparators):
++            right = self.visit(comparator)
++            if op.__class__ in self.relational_operators:
++                sympy_class = self.relational_operators[op.__class__]
++                comparison = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[left, right],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                comparisons.append(comparison)
++            else:
++                # For operators not in relational_operators (like Is, IsNot, In, NotIn),
++                # we keep the original comparison
++                comparisons.append(ast.Compare(
++                    left=left,
++                    ops=[op],
++                    comparators=[right]
++                ))
++            # For chained comparisons, the right side of one comparison
++            # becomes the left side of the next
++            left = right
++
++        if len(comparisons) == 1:
++            return comparisons[0]
++        else:
++            # For chained comparisons like 1 < 2 < 3, wrap in And
++            return ast.Call(
++                func=ast.Name(id='And', ctx=ast.Load()),
++                args=comparisons,
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++
+ 
+ _transformation = {  # items can be added but never re-ordered
+ 0: lambda_notation,

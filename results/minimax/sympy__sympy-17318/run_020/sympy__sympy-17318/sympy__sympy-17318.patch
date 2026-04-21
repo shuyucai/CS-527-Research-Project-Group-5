@@ -1,0 +1,24 @@
+diff --git a/sympy/simplify/sqrtdenest.py b/sympy/simplify/sqrtdenest.py
+index f0b7653ea8..9c74149e62 100644
+--- a/sympy/simplify/sqrtdenest.py
++++ b/sympy/simplify/sqrtdenest.py
+@@ -156,10 +156,16 @@ def _sqrt_match(p):
+         res = (p, S.Zero, S.Zero)
+     elif p.is_Add:
+         pargs = sorted(p.args, key=default_sort_key)
++        # Check for surds before calling split_surds to avoid IndexError
++        # when all terms have rational squares but none are Pow (e.g., 1 + I
++        # where 1**2 = 1 and I**2 = -1 are Rational but neither is a Pow)
+         if all((x**2).is_Rational for x in pargs):
+-            r, b, a = split_surds(p)
+-            res = a, b, r
+-            return list(res)
++            # Check if any arg has a Pow component after as_coeff_Mul
++            has_surds = any(x.as_coeff_Mul()[1].is_Pow for x in pargs)
++            if has_surds:
++                r, b, a = split_surds(p)
++                res = a, b, r
++                return list(res)
+         # to make the process canonical, the argument is included in the tuple
+         # so when the max is selected, it will be the largest arg having a
+         # given depth

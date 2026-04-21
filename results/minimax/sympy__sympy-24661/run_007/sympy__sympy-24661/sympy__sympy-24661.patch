@@ -1,0 +1,81 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..581beca708 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,14 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    relational_operators = {
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1186,6 +1194,61 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    def visit_Compare(self, node):
++        # Transform comparison operators (e.g., <, <=, >, >=, ==, !=)
++        # into SymPy relational classes with evaluate=False
++        if all(op.__class__ in self.relational_operators for op in node.ops):
++            sympy_class = self.relational_operators[node.ops[0].__class__]
++            left = self.visit(node.left)
++            right = self.visit(node.comparators[0])
++
++            # For single comparisons (not chained)
++            if len(node.ops) == 1:
++                new_node = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[left, right],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                return new_node
++            else:
++                # For chained comparisons like 1 < 2 < 3, we need to convert to
++                # And(Lt(1, 2, evaluate=False), Lt(2, 3, evaluate=False))
++                # But for now, let's just handle the first comparison
++                # to keep things simple and return unevaluated
++                # Actually, let's handle the simple case first
++                # For more complex cases, we might need to use And
++                from sympy import And
++                and_args = []
++                # Build the chain
++                for i, op in enumerate(node.ops):
++                    if i == 0:
++                        left = self.visit(node.left)
++                    else:
++                        left = self.visit(node.comparators[i-1])
++                    right = self.visit(node.comparators[i])
++                    op_class = self.relational_operators[op.__class__]
++                    and_args.append(
++                        ast.Call(
++                            func=ast.Name(id=op_class, ctx=ast.Load()),
++                            args=[left, right],
++                            keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                            starargs=None,
++                            kwargs=None
++                        )
++                    )
++                # Create And call with evaluate=False
++                new_node = ast.Call(
++                    func=ast.Name(id='And', ctx=ast.Load()),
++                    args=and_args,
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                return new_node
++        return node
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:

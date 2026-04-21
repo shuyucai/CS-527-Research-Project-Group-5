@@ -1,0 +1,72 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..cb48a9a195 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,14 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    relational_operators = {
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1186,6 +1194,52 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    def visit_Compare(self, node):
++        # Transform comparison operators to SymPy relational classes
++        # e.g., 1 < 2 -> Lt(1, 2, evaluate=False)
++        # and 1 < 2 < 3 -> And(Lt(1, 2, evaluate=False), Lt(2, 3, evaluate=False), evaluate=False)
++        if node.ops:
++            # Visit left operand
++            left = self.visit(node.left)
++            
++            # Visit all comparators (right-side operands)
++            comparators = [self.visit(c) for c in node.comparators]
++            
++            # Create a list of relational expressions
++            relations = []
++            ops = node.ops
++            current_left = left
++            for i, op in enumerate(ops):
++                right = comparators[i]
++                if op.__class__ in self.relational_operators:
++                    sympy_class = self.relational_operators[op.__class__]
++                    new_node = ast.Call(
++                        func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                        args=[current_left, right],
++                        keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                        starargs=None,
++                        kwargs=None
++                    )
++                    relations.append(new_node)
++                    current_left = right
++                else:
++                    # Unknown operator - return original node
++                    return node
++            
++            if len(relations) == 1:
++                return relations[0]
++            else:
++                # Multiple comparison operators (chained comparison)
++                # Wrap in And with evaluate=False
++                return ast.Call(
++                    func=ast.Name(id='And', ctx=ast.Load()),
++                    args=relations,
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++        return node
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:

@@ -1,0 +1,63 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..443a2f9cb0 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,14 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    relational_operators = {
++        ast.Lt: 'StrictLessThan',
++        ast.LtE: 'LessThan',
++        ast.Gt: 'StrictGreaterThan',
++        ast.GtE: 'GreaterThan',
++        ast.Eq: 'Equality',
++        ast.NotEq: 'Unequality',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1192,6 +1200,43 @@ def visit_Call(self, node):
+             new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
+ 
++    def visit_Compare(self, node):
++        # Transform comparison operators (e.g., <, <=, >, >=, ==, !=)
++        # to their SymPy equivalents with evaluate=False
++        if all(op.__class__ in self.relational_operators for op in node.ops):
++            left = self.visit(node.left)
++            comparators = [self.visit(c) for c in node.comparators]
++            ops = node.ops
++
++            # Build a chain of relational expressions
++            # For example, "1 < 2 < 3" becomes "And(1 < 2, 2 < 3)"
++            relations = []
++            prev = left
++            for op, comparator in zip(ops, comparators):
++                sympy_class = self.relational_operators[op.__class__]
++                rel = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[prev, comparator],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                relations.append(rel)
++                prev = comparator
++
++            if len(relations) == 1:
++                return relations[0]
++            else:
++                # For chained comparisons like 1 < 2 < 3, combine with And
++                return ast.Call(
++                    func=ast.Name(id='And', ctx=ast.Load()),
++                    args=relations,
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++        return node
++
+ 
+ _transformation = {  # items can be added but never re-ordered
+ 0: lambda_notation,

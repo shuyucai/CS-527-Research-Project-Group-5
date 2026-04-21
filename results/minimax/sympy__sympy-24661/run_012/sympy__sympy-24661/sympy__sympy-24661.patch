@@ -1,0 +1,79 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..c79deb2cd1 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,14 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    relational_operators = {
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1192,6 +1200,59 @@ def visit_Call(self, node):
+             new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
+ 
++    def visit_Compare(self, node):
++        # Transform comparison operators (e.g., <, <=, >, >=, ==, !=)
++        # to their SymPy equivalents with evaluate=False
++        # Handle chained comparisons (e.g., 1 < 2 < 3) by converting to And
++        if node.ops[0].__class__ in self.relational_operators:
++            # Process all comparisons in the chain
++            sympy_class = self.relational_operators[node.ops[0].__class__]
++            left = self.visit(node.left)
++            comparators = [self.visit(c) for c in node.comparators]
++            right = comparators[0]
++            
++            new_node = ast.Call(
++                func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                args=[left, right],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            
++            # For chained comparisons (e.g., 1 < 2 < 3), wrap in And
++            if len(node.ops) > 1:
++                # Process remaining comparisons in the chain
++                and_args = [new_node]
++                for i in range(1, len(node.ops)):
++                    op = node.ops[i]
++                    if op.__class__ in self.relational_operators:
++                        sympy_class = self.relational_operators[op.__class__]
++                        left = comparators[i-1]
++                        right = comparators[i]
++                        next_node = ast.Call(
++                            func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                            args=[left, right],
++                            keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                            starargs=None,
++                            kwargs=None
++                        )
++                        and_args.append(next_node)
++                    else:
++                        # Unknown operator, return as is
++                        return node
++                
++                # Wrap all comparisons in And
++                new_node = ast.Call(
++                    func=ast.Name(id='And', ctx=ast.Load()),
++                    args=and_args,
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++            
++            return new_node
++        return node
++
+ 
+ _transformation = {  # items can be added but never re-ordered
+ 0: lambda_notation,
