@@ -1,0 +1,60 @@
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..c46b2b3 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -120,31 +120,48 @@ class HTTPDigestAuth(AuthBase):
+         s += os.urandom(8)
+ 
+         cnonce = (hashlib.sha1(s).hexdigest()[:16])
+-        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, qop, HA2)
++        # Select qop token to use in response. Prefer 'auth' when offered.
++        qop_token = None
++        if qop is not None:
++            try:
++                qop_list = [x.strip() for x in qop.split(',')]
++            except Exception:
++                try:
++                    qop_list = list(qop)
++                except Exception:
++                    qop_list = [str(qop)]
++            if 'auth' in qop_list:
++                qop_token = 'auth'
++            elif 'auth-int' in qop_list:
++                qop_token = 'auth-int'
++
++        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, qop_token or qop, HA2)
+         if _algorithm == 'MD5-SESS':
+             HA1 = hash_utf8('%s:%s:%s' % (HA1, nonce, cnonce))
+ 
+         if qop is None:
+             respdig = KD(HA1, "%s:%s" % (nonce, HA2))
+-        elif qop == 'auth' or 'auth' in qop.split(','):
++        elif qop_token is not None:
+             respdig = KD(HA1, noncebit)
+         else:
+-            # XXX handle auth-int.
++            # XXX handle auth-int/other tokens.
+             return None
+ 
+         self.last_nonce = nonce
+ 
+         # XXX should the partial digests be encoded too?
+-        base = 'username="%s", realm="%s", nonce="%s", uri="%s", ' \
+-               'response="%s"' % (self.username, realm, nonce, path, respdig)
++        base = 'username="%s", realm="%s", nonce="%s", uri="%s", '                'response="%s"' % (self.username, realm, nonce, path, respdig)
+         if opaque:
+             base += ', opaque="%s"' % opaque
+         if algorithm:
+             base += ', algorithm="%s"' % algorithm
+         if entdig:
+             base += ', digest="%s"' % entdig
+-        if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++        if qop_token:
++            # Per RFC2617 the qop-options value is a quoted string. Some
++            # servers are sensitive to the presence of the quotes, so emit
++            # qop as a quoted value (e.g. qop="auth").
++            base += ', qop="%s", nc=%s, cnonce="%s"' % (qop_token, ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

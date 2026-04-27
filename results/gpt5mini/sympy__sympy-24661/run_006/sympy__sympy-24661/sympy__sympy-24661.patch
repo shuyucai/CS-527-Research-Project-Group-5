@@ -1,0 +1,61 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..f287bdf4d5 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1192,6 +1192,56 @@ def visit_Call(self, node):
+             new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
+ 
++    def visit_Compare(self, node):
++        """Transform Python comparison expressions into SymPy relational calls
++
++        Single comparisons become Lt(a, b, evaluate=False), etc.
++        Chained comparisons (a < b < c) become And(Lt(a,b, evaluate=False), Lt(b,c, evaluate=False), evaluate=False)
++        """
++        # Visit children first
++        left = self.visit(node.left)
++        comparators = [self.visit(c) for c in node.comparators]
++
++        # Map AST comparator classes to SymPy names
++        op_map = {
++            ast.Lt: 'Lt',
++            ast.LtE: 'Le',
++            ast.Gt: 'Gt',
++            ast.GtE: 'Ge',
++            ast.Eq: 'Eq',
++            ast.NotEq: 'Ne',
++        }
++
++        calls = []
++        prev = left
++        for op, comp in zip(node.ops, comparators):
++            sympy_name = op_map.get(op.__class__)
++            if sympy_name is None:
++                # Unknown comparator: fall back to original node
++                return node
++            call = ast.Call(
++                func=ast.Name(id=sympy_name, ctx=ast.Load()),
++                args=[prev, comp],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            calls.append(call)
++            prev = comp
++
++        if len(calls) == 1:
++            return calls[0]
++        else:
++            # Combine chained comparisons with And(...)
++            and_call = ast.Call(
++                func=ast.Name(id='And', ctx=ast.Load()),
++                args=calls,
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            return and_call
++
+ 
+ _transformation = {  # items can be added but never re-ordered
+ 0: lambda_notation,

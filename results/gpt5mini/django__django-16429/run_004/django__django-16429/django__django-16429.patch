@@ -1,0 +1,60 @@
+diff --git a/check_tests_small.py b/check_tests_small.py
+new file mode 100644
+index 0000000000..92fac73d1d
+--- /dev/null
++++ b/check_tests_small.py
+@@ -0,0 +1,28 @@
++import datetime
++from django.conf import settings
++settings.configure(USE_TZ=True, USE_I18N=False, TIME_ZONE='UTC')
++from django.utils import timezone
++from django.utils.timesince import timesince, timeuntil
++
++# Test case from PR
++now = timezone.now()
++d = now - datetime.timedelta(days=31)
++print('timesince 31d aware:', timesince(d))
++assert timesince(d) == "1\xa0month"
++
++# naive date
++today = datetime.date.today()
++assert timesince(today + datetime.timedelta(days=1)) == "0\xa0minutes"
++
++# months edge tests
++t = datetime.datetime(2022,1,1)
++cases = [
++    (datetime.datetime(2022,2,1), "1\xa0month"),
++    (datetime.datetime(2022,3,1), "2\xa0months"),
++]
++for value, expected in cases:
++    out = timesince(t, value)
++    print(t, value, out)
++    assert out == expected
++
++print('All checks passed')
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..10ba837aa0 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -59,9 +59,11 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+         raise ValueError("depth must be greater than 0.")
+     # Convert datetime.date to datetime.datetime for comparison.
+     if not isinstance(d, datetime.datetime):
+-        d = datetime.datetime(d.year, d.month, d.day)
++        # Preserve tzinfo if present on the input (e.g., if a datetime.date
++        # subclass providing tzinfo) or None otherwise.
++        d = datetime.datetime(d.year, d.month, d.day, tzinfo=getattr(d, "tzinfo", None))
+     if now and not isinstance(now, datetime.datetime):
+-        now = datetime.datetime(now.year, now.month, now.day)
++        now = datetime.datetime(now.year, now.month, now.day, tzinfo=getattr(now, "tzinfo", None))
+ 
+     now = now or datetime.datetime.now(datetime.timezone.utc if is_aware(d) else None)
+ 
+@@ -97,6 +99,7 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+             d.hour,
+             d.minute,
+             d.second,
++            tzinfo=getattr(d, "tzinfo", None),
+         )
+     else:
+         pivot = d

@@ -1,0 +1,100 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..726290ba03 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1192,6 +1192,95 @@ def visit_Call(self, node):
+             new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
+ 
++    def visit_Compare(self, node):
++        """Transform Python comparison operators into SymPy relational calls
++
++        Single comparisons (a < b) are converted to Lt(a, b, evaluate=False) etc.
++        Chained comparisons (a < b < c) become And(Lt(a,b), Lt(b,c)).
++        """
++        # Recursively transform children
++        left = self.visit(node.left)
++        comparators = [self.visit(c) for c in node.comparators]
++
++        calls = []
++        prev = left
++        for op, comp in zip(node.ops, comparators):
++            # Handle different operator types
++            if isinstance(op, ast.Lt):
++                sympy_name = 'Lt'
++            elif isinstance(op, ast.Gt):
++                sympy_name = 'Gt'
++            elif isinstance(op, ast.LtE):
++                sympy_name = 'Le'
++            elif isinstance(op, ast.GtE):
++                sympy_name = 'Ge'
++            elif isinstance(op, ast.Eq):
++                sympy_name = 'Eq'
++            elif isinstance(op, ast.NotEq):
++                sympy_name = 'Ne'
++            elif isinstance(op, ast.Is):
++                sympy_name = 'Eq'
++            elif isinstance(op, ast.IsNot):
++                sympy_name = 'Ne'
++            elif isinstance(op, ast.In):
++                # Contains(prev, comp)
++                contains_call = ast.Call(
++                    func=ast.Name(id='Contains', ctx=ast.Load()),
++                    args=[prev, comp],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                calls.append(contains_call)
++                prev = comp
++                continue
++            elif isinstance(op, ast.NotIn):
++                # Not(Contains(prev, comp))
++                contains_call = ast.Call(
++                    func=ast.Name(id='Contains', ctx=ast.Load()),
++                    args=[prev, comp],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                not_call = ast.Call(
++                    func=ast.Name(id='Not', ctx=ast.Load()),
++                    args=[contains_call],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                calls.append(not_call)
++                prev = comp
++                continue
++            else:
++                # unknown comparison, leave as-is
++                return node
++
++            # build call: SympyClass(prev, comp, evaluate=False)
++            call = ast.Call(
++                func=ast.Name(id=sympy_name, ctx=ast.Load()),
++                args=[prev, comp],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            calls.append(call)
++            prev = comp
++
++        if len(calls) == 1:
++            return calls[0]
++        else:
++            # wrap in And(...)
++            and_call = ast.Call(
++                func=ast.Name(id='And', ctx=ast.Load()),
++                args=calls,
++                keywords=[],
++                starargs=None,
++                kwargs=None
++            )
++            return and_call
++
+ 
+ _transformation = {  # items can be added but never re-ordered
+ 0: lambda_notation,

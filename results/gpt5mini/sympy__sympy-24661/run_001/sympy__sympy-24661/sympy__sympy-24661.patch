@@ -1,0 +1,59 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..3046a33af8 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1192,6 +1192,54 @@ def visit_Call(self, node):
+             new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
+ 
++    def visit_Compare(self, node):
++        # Transform Python comparison operators into SymPy relational calls
++        # e.g. 1 < 2 -> Lt(1, 2, evaluate=False)
++        left = self.visit(node.left)
++        comparators = [self.visit(c) for c in node.comparators]
++        ops = node.ops
++        mapping = {
++            ast.Lt: 'Lt',
++            ast.LtE: 'Le',
++            ast.Gt: 'Gt',
++            ast.GtE: 'Ge',
++            ast.Eq: 'Eq',
++            ast.NotEq: 'Ne',
++            ast.Is: 'Eq',
++            ast.IsNot: 'Ne',
++        }
++
++        rel_calls = []
++        prev = left
++        for op, comp in zip(ops, comparators):
++            op_type = op.__class__
++            if op_type not in mapping:
++                # Unknown comparison: leave as-is
++                return node
++            rel_name = mapping[op_type]
++            call = ast.Call(
++                func=ast.Name(id=rel_name, ctx=ast.Load()),
++                args=[prev, comp],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            rel_calls.append(call)
++            prev = comp
++
++        if len(rel_calls) == 1:
++            return rel_calls[0]
++        else:
++            # Chain comparisons -> And(rel1, rel2, ... , evaluate=False)
++            and_call = ast.Call(
++                func=ast.Name(id='And', ctx=ast.Load()),
++                args=rel_calls,
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            return and_call
++
+ 
+ _transformation = {  # items can be added but never re-ordered
+ 0: lambda_notation,

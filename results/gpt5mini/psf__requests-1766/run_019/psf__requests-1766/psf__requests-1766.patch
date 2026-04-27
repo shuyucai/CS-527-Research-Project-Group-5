@@ -1,0 +1,56 @@
+diff --git a/repro_qop.py b/repro_qop.py
+new file mode 100644
+index 0000000..cccc986
+--- /dev/null
++++ b/repro_qop.py
+@@ -0,0 +1,21 @@
++from requests.auth import HTTPDigestAuth
++
++# single qop
++ad = HTTPDigestAuth('user','pass')
++ad.chal = {'realm':'realm','nonce':'abc','qop':'auth'}
++print(ad.build_digest_header('GET','http://example.com/'))
++
++# multiple qop
++ad2 = HTTPDigestAuth('user','pass')
++ad2.chal = {'realm':'realm','nonce':'abc','qop':'auth,auth-int'}
++print(ad2.build_digest_header('GET','http://example.com/'))
++
++# multiple qop without auth first
++ad3 = HTTPDigestAuth('user','pass')
++ad3.chal = {'realm':'realm','nonce':'abc','qop':'auth-int,auth'}
++print(ad3.build_digest_header('GET','http://example.com/'))
++
++# no qop
++ad4 = HTTPDigestAuth('user','pass')
++ad4.chal = {'realm':'realm','nonce':'abc'}
++print(ad4.build_digest_header('GET','http://example.com/'))
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..9c3443a 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -70,6 +70,14 @@ class HTTPDigestAuth(AuthBase):
+         realm = self.chal['realm']
+         nonce = self.chal['nonce']
+         qop = self.chal.get('qop')
++        # If the qop directive contains multiple values, choose the
++        # 'auth' qop if available; otherwise select the first token.
++        if qop and ',' in qop:
++            qop_tokens = [t.strip() for t in qop.split(',') if t.strip()]
++            if 'auth' in qop_tokens:
++                qop = 'auth'
++            elif qop_tokens:
++                qop = qop_tokens[0]
+         algorithm = self.chal.get('algorithm')
+         opaque = self.chal.get('opaque')
+ 
+@@ -144,7 +152,8 @@ class HTTPDigestAuth(AuthBase):
+         if entdig:
+             base += ', digest="%s"' % entdig
+         if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++            # Quote the qop value to match RFC2617 and curl's behaviour.
++            base += ', qop="%s", nc=%s, cnonce="%s"' % (qop, ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

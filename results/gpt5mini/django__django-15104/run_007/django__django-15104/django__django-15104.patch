@@ -1,0 +1,17 @@
+diff --git a/django/db/migrations/autodetector.py b/django/db/migrations/autodetector.py
+index 97977d72ef..54a31683cc 100644
+--- a/django/db/migrations/autodetector.py
++++ b/django/db/migrations/autodetector.py
+@@ -96,7 +96,11 @@ class MigrationAutodetector:
+         for name, field in sorted(fields.items()):
+             deconstruction = self.deep_deconstruct(field)
+             if field.remote_field and field.remote_field.model:
+-                del deconstruction[2]['to']
++                # Some custom fields may remove the "to" argument from the
++                # deconstruction kwargs. Use pop to avoid KeyError in that
++                # situation and keep behaviour consistent if "to" is
++                # absent. See ticket reproducer in PR description.
++                deconstruction[2].pop('to', None)
+             fields_def.append(deconstruction)
+         return fields_def
+ 

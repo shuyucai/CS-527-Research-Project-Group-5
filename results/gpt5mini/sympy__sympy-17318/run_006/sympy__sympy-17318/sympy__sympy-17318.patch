@@ -1,0 +1,43 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 0000000000..7b32dd4f9f
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,6 @@
++from sympy import sqrt, I
++from sympy.simplify.sqrtdenest import sqrtdenest
++expr = (3 - sqrt(2)*sqrt(4 + 3*I) + 3*I)/2
++print('repr:', repr(expr))
++print('str :', str(expr))
++print('sqrtdenest ->', sqrtdenest(expr))
+diff --git a/sympy/polys/numberfields.py b/sympy/polys/numberfields.py
+index 8e86db835f..0a40ff2731 100644
+--- a/sympy/polys/numberfields.py
++++ b/sympy/polys/numberfields.py
+@@ -32,7 +32,6 @@
+ from sympy.polys.specialpolys import cyclotomic_poly
+ from sympy.printing.lambdarepr import LambdaPrinter
+ from sympy.printing.pycode import PythonCodePrinter, MpmathPrinter
+-from sympy.simplify.radsimp import _split_gcd
+ from sympy.simplify.simplify import _is_sum_surds
+ from sympy.utilities import (
+     numbered_symbols, variations, lambdify, public, sift
+diff --git a/sympy/simplify/sqrtdenest.py b/sympy/simplify/sqrtdenest.py
+index f0b7653ea8..14d302819b 100644
+--- a/sympy/simplify/sqrtdenest.py
++++ b/sympy/simplify/sqrtdenest.py
+@@ -157,7 +157,13 @@ def _sqrt_match(p):
+     elif p.is_Add:
+         pargs = sorted(p.args, key=default_sort_key)
+         if all((x**2).is_Rational for x in pargs):
+-            r, b, a = split_surds(p)
++            try:
++                r, b, a = split_surds(p)
++            except Exception:
++                # if split_surds cannot process p (e.g. unexpected
++                # structure) don't raise an error here; indicate no match
++                # so that denesting will be skipped for this expression.
++                return []
+             res = a, b, r
+             return list(res)
+         # to make the process canonical, the argument is included in the tuple

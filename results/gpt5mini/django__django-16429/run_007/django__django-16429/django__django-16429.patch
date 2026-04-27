@@ -1,0 +1,48 @@
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..d938b42901 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -97,6 +97,7 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+             d.hour,
+             d.minute,
+             d.second,
++            tzinfo=(d.tzinfo if is_aware(d) else None),
+         )
+     else:
+         pivot = d
+diff --git a/repro_timesince.py b/repro_timesince.py
+new file mode 100644
+index 0000000000..acfc3218e3
+--- /dev/null
++++ b/repro_timesince.py
+@@ -0,0 +1,20 @@
++import datetime
++from django.utils.timesince import timesince
++
++# Create aware now
++now = datetime.datetime.now(datetime.timezone.utc)
++# One month ago ~ 31 days
++d = now - datetime.timedelta(days=31)
++print('now tzinfo:', now.tzinfo)
++print('d tzinfo:', d.tzinfo)
++print('Calling timesince(d)')
++# Use a simple time_strings mapping to avoid Django translation machinery
++time_strings = {
++    "year": "%(num)d year",
++    "month": "%(num)d month",
++    "week": "%(num)d week",
++    "day": "%(num)d day",
++    "hour": "%(num)d hour",
++    "minute": "%(num)d minute",
++}
++print(timesince(d, time_strings=time_strings))
+diff --git a/test_settings.py b/test_settings.py
+new file mode 100644
+index 0000000000..93303fda00
+--- /dev/null
++++ b/test_settings.py
+@@ -0,0 +1,4 @@
++# Minimal Django settings for reproduction
++USE_I18N = False
++SECRET_KEY = 'testing'
++INSTALLED_APPS = []

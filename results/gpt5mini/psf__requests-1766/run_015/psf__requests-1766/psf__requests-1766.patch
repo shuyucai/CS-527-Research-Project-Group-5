@@ -1,0 +1,45 @@
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..bfe012e 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -120,13 +120,27 @@ class HTTPDigestAuth(AuthBase):
+         s += os.urandom(8)
+ 
+         cnonce = (hashlib.sha1(s).hexdigest()[:16])
+-        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, qop, HA2)
++
++        # Determine which qop value we are going to use for the
++        # response.  The server may advertise multiple qop-options
++        # (e.g. "auth,auth-int").  We must use the chosen qop value
++        # when computing the response digest (noncebit) and when
++        # constructing the Authorization header.  Per RFC2617 the
++        # qop-options value should also be quoted in the header.
++        qop_to_use = None
++        if qop is None:
++            qop_to_use = None
++        elif qop == 'auth' or 'auth' in qop.split(','):
++            qop_to_use = 'auth'
++
++        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, qop_to_use, HA2)
+         if _algorithm == 'MD5-SESS':
+             HA1 = hash_utf8('%s:%s:%s' % (HA1, nonce, cnonce))
+ 
++        chosen_qop = qop_to_use
+         if qop is None:
+             respdig = KD(HA1, "%s:%s" % (nonce, HA2))
+-        elif qop == 'auth' or 'auth' in qop.split(','):
++        elif chosen_qop == 'auth':
+             respdig = KD(HA1, noncebit)
+         else:
+             # XXX handle auth-int.
+@@ -143,8 +157,8 @@ class HTTPDigestAuth(AuthBase):
+             base += ', algorithm="%s"' % algorithm
+         if entdig:
+             base += ', digest="%s"' % entdig
+-        if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++        if chosen_qop:
++            base += ', qop="%s", nc=%s, cnonce="%s"' % (chosen_qop, ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

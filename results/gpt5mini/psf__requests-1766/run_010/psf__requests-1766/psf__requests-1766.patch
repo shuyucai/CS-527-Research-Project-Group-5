@@ -1,0 +1,57 @@
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..08af602 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -70,6 +70,18 @@ class HTTPDigestAuth(AuthBase):
+         realm = self.chal['realm']
+         nonce = self.chal['nonce']
+         qop = self.chal.get('qop')
++        # Choose a single qop token to use. RFC2617 defines qop-options as a
++        # quoted string of one or more tokens. Prefer 'auth' if available.
++        qop_token = None
++        if qop:
++            if isinstance(qop, (list, tuple)):
++                qop_list = list(qop)
++            else:
++                qop_list = [t.strip() for t in qop.split(',')]
++            if 'auth' in qop_list:
++                qop_token = 'auth'
++            else:
++                qop_token = qop_list[0]
+         algorithm = self.chal.get('algorithm')
+         opaque = self.chal.get('opaque')
+ 
+@@ -120,16 +132,18 @@ class HTTPDigestAuth(AuthBase):
+         s += os.urandom(8)
+ 
+         cnonce = (hashlib.sha1(s).hexdigest()[:16])
+-        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, qop, HA2)
++        # Use the chosen qop token (if any) for the nonce bit calculation
++        used_qop = qop_token if qop_token is not None else qop
++        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, used_qop, HA2)
+         if _algorithm == 'MD5-SESS':
+             HA1 = hash_utf8('%s:%s:%s' % (HA1, nonce, cnonce))
+ 
+         if qop is None:
+             respdig = KD(HA1, "%s:%s" % (nonce, HA2))
+-        elif qop == 'auth' or 'auth' in qop.split(','):
++        elif qop_token == 'auth':
+             respdig = KD(HA1, noncebit)
+         else:
+-            # XXX handle auth-int.
++            # XXX handle auth-int and other qop values.
+             return None
+ 
+         self.last_nonce = nonce
+@@ -143,8 +157,9 @@ class HTTPDigestAuth(AuthBase):
+             base += ', algorithm="%s"' % algorithm
+         if entdig:
+             base += ', digest="%s"' % entdig
+-        if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++        if qop_token:
++            # Quote the qop token per RFC2617 (qop-options should be quoted)
++            base += ', qop="%s", nc=%s, cnonce="%s"' % (qop_token, ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

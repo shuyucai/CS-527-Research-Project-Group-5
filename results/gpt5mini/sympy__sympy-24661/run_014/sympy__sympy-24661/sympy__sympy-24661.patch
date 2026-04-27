@@ -1,0 +1,57 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..e3fdd0abe9 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1191,6 +1191,52 @@ def visit_Call(self, node):
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:
+             new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
++    def visit_Compare(self, node):
++        """Transform comparison operators into SymPy relational calls with
++        evaluate=False. Handles chained comparisons by combining them with And().
++        """
++        # visit children
++        left = self.visit(node.left)
++        comparators = [self.visit(c) for c in node.comparators]
++        ops = node.ops
++
++        op_map = {
++            ast.Lt: 'Lt',
++            ast.LtE: 'Le',
++            ast.Gt: 'Gt',
++            ast.GtE: 'Ge',
++            ast.Eq: 'Eq',
++            ast.NotEq: 'Ne',
++        }
++
++        calls = []
++        l = left
++        for op, r in zip(ops, comparators):
++            cls_name = op_map.get(op.__class__)
++            if cls_name is None:
++                # unknown comparison operator; fall back to original node
++                return node
++            call = ast.Call(
++                func=ast.Name(id=cls_name, ctx=ast.Load()),
++                args=[l, r],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            calls.append(call)
++            l = r
++
++        if len(calls) == 1:
++            return calls[0]
++        # chained comparisons: combine with And(...)
++        and_call = ast.Call(
++            func=ast.Name(id='And', ctx=ast.Load()),
++            args=calls,
++            keywords=[],
++            starargs=None,
++            kwargs=None
++        )
++        return and_call
+ 
+ 
+ _transformation = {  # items can be added but never re-ordered

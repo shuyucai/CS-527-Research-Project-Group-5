@@ -1,0 +1,46 @@
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..ab7cb83 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -120,16 +120,25 @@ class HTTPDigestAuth(AuthBase):
+         s += os.urandom(8)
+ 
+         cnonce = (hashlib.sha1(s).hexdigest()[:16])
+-        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, qop, HA2)
++        # Determine the qop to use (prefer "auth" if offered)
++        chosen_qop = None
++        if qop:
++            qop_list = [x.strip() for x in qop.split(',')]
++            if 'auth' in qop_list:
++                chosen_qop = 'auth'
++            else:
++                chosen_qop = qop_list[0]
++
++        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, chosen_qop or '', HA2)
+         if _algorithm == 'MD5-SESS':
+             HA1 = hash_utf8('%s:%s:%s' % (HA1, nonce, cnonce))
+ 
+-        if qop is None:
++        if chosen_qop is None:
+             respdig = KD(HA1, "%s:%s" % (nonce, HA2))
+-        elif qop == 'auth' or 'auth' in qop.split(','):
++        elif chosen_qop in ('auth', 'auth-int'):
+             respdig = KD(HA1, noncebit)
+         else:
+-            # XXX handle auth-int.
++            # Unsupported qop
+             return None
+ 
+         self.last_nonce = nonce
+@@ -143,8 +152,9 @@ class HTTPDigestAuth(AuthBase):
+             base += ', algorithm="%s"' % algorithm
+         if entdig:
+             base += ', digest="%s"' % entdig
+-        if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++        if chosen_qop:
++            # Quote the qop value to comply with RFC2617 and match curl behavior
++            base += ', qop="%s", nc=%s, cnonce="%s"' % (chosen_qop, ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

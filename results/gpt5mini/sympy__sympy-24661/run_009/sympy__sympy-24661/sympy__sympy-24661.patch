@@ -1,0 +1,95 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..36c435430d 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1186,6 +1186,90 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    def visit_Compare(self, node):
++        """
++        Transform comparison expressions into SymPy relational calls with
++        evaluate=False. For simple comparisons like `a < b` this becomes
++        `Lt(a, b, evaluate=False)`. For chained comparisons like
++        `a < b < c` this becomes `And(Lt(a, b, evaluate=False), Lt(b, c, evaluate=False))`.
++        """
++        # Visit subnodes first
++        left = self.visit(node.left)
++        comparators = [self.visit(c) for c in node.comparators]
++
++        op_map = {
++            ast.Lt: 'Lt',
++            ast.LtE: 'Le',
++            ast.Gt: 'Gt',
++            ast.GtE: 'Ge',
++            ast.Eq: 'Eq',
++            ast.NotEq: 'Ne',
++            ast.Is: 'Eq',
++            ast.IsNot: 'Ne',
++            ast.In: 'Contains',
++            ast.NotIn: 'Not',
++        }
++
++        rel_calls = []
++        prev = left
++        for op, comp in zip(node.ops, comparators):
++            op_type = type(op)
++            # Special handling for 'in' and 'not in'
++            if op_type is ast.In:
++                # prev in comp -> Contains(prev, comp, evaluate=False)
++                call = ast.Call(
++                    func=ast.Name(id='Contains', ctx=ast.Load()),
++                    args=[prev, comp],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++            elif op_type is ast.NotIn:
++                # prev not in comp -> Not(Contains(prev, comp, evaluate=False))
++                inner = ast.Call(
++                    func=ast.Name(id='Contains', ctx=ast.Load()),
++                    args=[prev, comp],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                call = ast.Call(
++                    func=ast.Name(id='Not', ctx=ast.Load()),
++                    args=[inner],
++                    keywords=[],
++                    starargs=None,
++                    kwargs=None
++                )
++            else:
++                cls_name = op_map.get(op_type)
++                if cls_name is None:
++                    # Unknown comparison: leave node as-is
++                    return node
++                # Build call: Class(prev, comp, evaluate=False)
++                call = ast.Call(
++                    func=ast.Name(id=cls_name, ctx=ast.Load()),
++                    args=[prev, comp],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++
++            rel_calls.append(call)
++            prev = comp
++
++        if len(rel_calls) == 1:
++            return rel_calls[0]
++        else:
++            # Combine with And(...)
++            and_call = ast.Call(
++                func=ast.Name(id='And', ctx=ast.Load()),
++                args=rel_calls,
++                keywords=[],
++                starargs=None,
++                kwargs=None,
++            )
++            return and_call
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:

@@ -1,0 +1,97 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..f16a789610 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,16 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    # mapping for comparison operators
++    comparators = {
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++    }
++
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1186,6 +1196,75 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    
++
++    def visit_Compare(self, node):
++        """
++        Transform comparison operations into SymPy relational calls with
++        evaluate=False. For chained comparisons, produce an And(...) of the
++        individual comparisons so that the result is not evaluated to a
++        Python boolean.
++        """
++        # Visit children first
++        left = self.visit(node.left)
++        comparators = [self.visit(c) for c in node.comparators]
++
++        # Build individual comparison calls
++        comp_calls = []
++        prev = left
++        for op, comp in zip(node.ops, comparators):
++            op_class = op.__class__
++            if op_class in self.comparators:
++                func_name = self.comparators[op_class]
++            else:
++                # Unknown comparator, leave node unchanged
++                return node
++            call = ast.Call(
++                func=ast.Name(id=func_name, ctx=ast.Load()),
++                args=[prev, comp],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            comp_calls.append(call)
++            prev = comp
++
++        if len(comp_calls) == 1:
++            return comp_calls[0]
++
++        # For chained comparisons, wrap in And(...)
++        and_call = ast.Call(
++            func=ast.Name(id='And', ctx=ast.Load()),
++            args=comp_calls,
++            keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++            starargs=None,
++            kwargs=None
++        )
++        return and_call
++
++    def visit_BoolOp(self, node):
++        # Transform boolean 'and'/'or' into SymPy And/Or with evaluate=False
++        op = node.op
++        values = [self.visit(v) for v in node.values]
++        if isinstance(op, ast.And):
++            func_name = 'And'
++        elif isinstance(op, ast.Or):
++            func_name = 'Or'
++        else:
++            return node
++        return ast.Call(func=ast.Name(id=func_name, ctx=ast.Load()), args=values,
++                        keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                        starargs=None, kwargs=None)
++
++    def visit_UnaryOp(self, node):
++        # Transform 'not' into SymPy Not with evaluate=False
++        if isinstance(node.op, ast.Not):
++            operand = self.visit(node.operand)
++            return ast.Call(func=ast.Name(id='Not', ctx=ast.Load()), args=[operand],
++                            keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                            starargs=None, kwargs=None)
++        return self.generic_visit(node)
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:

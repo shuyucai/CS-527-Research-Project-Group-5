@@ -1,0 +1,29 @@
+diff --git a/repro_sqrtdenest.py b/repro_sqrtdenest.py
+new file mode 100644
+index 0000000000..4ddb99697f
+--- /dev/null
++++ b/repro_sqrtdenest.py
+@@ -0,0 +1,9 @@
++from sympy.simplify.sqrtdenest import sqrtdenest
++from sympy import sqrt, I
++expr = (3 - sqrt(2)*sqrt(4 + 3*I) + 3*I)/2
++print('input expr:', expr)
++try:
++    res = sqrtdenest(expr)
++    print('sqrtdenest ->', res)
++except Exception as e:
++    print('Exception:', type(e).__name__, e)
+diff --git a/sympy/simplify/radsimp.py b/sympy/simplify/radsimp.py
+index 216ae26204..3d0193bada 100644
+--- a/sympy/simplify/radsimp.py
++++ b/sympy/simplify/radsimp.py
+@@ -1077,6 +1077,9 @@ def split_surds(expr):
+     coeff_muls = [x.as_coeff_Mul() for x in args]
+     surds = [x[1]**2 for x in coeff_muls if x[1].is_Pow]
+     surds.sort(key=default_sort_key)
++    if not surds:
++        # no surds to split: return trivial gcd=1, a=0, b=original expression
++        return S.One, S.Zero, expr
+     g, b1, b2 = _split_gcd(*surds)
+     g2 = g
+     if not b2 and len(b1) >= 2:

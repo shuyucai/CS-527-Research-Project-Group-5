@@ -1,0 +1,100 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..28f664bd97 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1186,12 +1186,95 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    def visit_BoolOp(self, node):
++        """Convert Python boolean ops (and/or) into SymPy And/Or with evaluate=False."""
++        # visit children
++        values = [self.visit(v) for v in node.values]
++        if isinstance(node.op, ast.And):
++            func_name = 'And'
++        elif isinstance(node.op, ast.Or):
++            func_name = 'Or'
++        else:
++            return node
++
++        return ast.Call(
++            func=ast.Name(id=func_name, ctx=ast.Load()),
++            args=values,
++            keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++            starargs=None,
++            kwargs=None
++        )
++
++    def visit_UnaryOp(self, node):
++        """Convert Python 'not' to SymPy Not with evaluate=False where appropriate."""
++        if isinstance(node.op, ast.Not):
++            operand = self.visit(node.operand)
++            return ast.Call(
++                func=ast.Name(id='Not', ctx=ast.Load()),
++                args=[operand],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++        return self.generic_visit(node)
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:
+             new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
+ 
++    def visit_Compare(self, node):
++        """Transform Compare nodes into SymPy relational calls with evaluate=False.
++
++        Handles chained comparisons by converting them into an And(...) of
++        individual relational calls.
++        """
++        # Visit and transform children
++        left = self.visit(node.left)
++        comparators = [self.visit(c) for c in node.comparators]
++
++        cmp_map = {
++            ast.Lt: 'Lt',
++            ast.Gt: 'Gt',
++            ast.LtE: 'Le',
++            ast.GtE: 'Ge',
++            ast.Eq: 'Eq',
++            ast.NotEq: 'Ne',
++            ast.Is: 'Eq',
++            ast.IsNot: 'Ne',
++        }
++
++        rel_calls = []
++        lhs = left
++        for op, rhs in zip(node.ops, comparators):
++            cls_name = cmp_map.get(op.__class__)
++            if cls_name is None:
++                # Unknown comparator: leave node unchanged
++                return node
++            call = ast.Call(
++                func=ast.Name(id=cls_name, ctx=ast.Load()),
++                args=[lhs, rhs],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            rel_calls.append(call)
++            lhs = rhs
++
++        if len(rel_calls) == 1:
++            return rel_calls[0]
++        else:
++            # chained comparisons -> And(call1, call2, ..., evaluate=False)
++            and_call = ast.Call(
++                func=ast.Name(id='And', ctx=ast.Load()),
++                args=rel_calls,
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            return and_call
++
+ 
+ _transformation = {  # items can be added but never re-ordered
+ 0: lambda_notation,

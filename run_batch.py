@@ -18,10 +18,10 @@ SWEAGENT = str(Path.home() / "SWE-agent/.venv311/bin/sweagent")
 SWEAGENT_DIR = str(Path.home() / "SWE-agent")
 PROJECT_DIR = Path(__file__).parent
 TRAJ_DIR = PROJECT_DIR / "Trajectories"
-RESULTS_DIR = PROJECT_DIR / "results" / MODEL_SLUG
 
-MODEL_NAME = "openrouter/minimax/minimax-m2.5"
-MODEL_SLUG = "minimax"  # used in directory/file names
+MODEL_NAME = "openrouter/openai/gpt-5-mini"
+MODEL_SLUG = "gpt5mini"
+RESULTS_DIR = PROJECT_DIR / "results" / MODEL_SLUG
 API_BASE = "https://openrouter.ai/api/v1"
 TEMPERATURE = 1.0
 N_RUNS = 20

@@ -1,0 +1,94 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..ae6f0787df 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1192,6 +1192,89 @@ def visit_Call(self, node):
+             new_node.keywords.append(ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load())))
+         return new_node
+ 
++    def visit_Compare(self, node):
++        """
++        Transform Python comparison operators into SymPy relational calls
++        with evaluate=False. Handle chained comparisons by combining
++        them with And(...).
++        """
++        # Visit subnodes first
++        left = self.visit(node.left)
++        comparators = [self.visit(c) for c in node.comparators]
++
++        # Map AST comparison operators to SymPy relational class names
++        op_map = {
++            ast.Lt: 'Lt',
++            ast.LtE: 'Le',
++            ast.Gt: 'Gt',
++            ast.GtE: 'Ge',
++            ast.Eq: 'Eq',
++            ast.NotEq: 'Ne',
++            ast.Is: 'Eq',
++            ast.IsNot: 'Ne',
++        }
++
++        comps = []
++        prev = left
++        for op, comp in zip(node.ops, comparators):
++            cls = op_map.get(op.__class__)
++            if cls is None:
++                # Unknown comparison - leave unchanged
++                return node
++            # Build call: Class(prev, comp, evaluate=False)
++            call = ast.Call(
++                func=ast.Name(id=cls, ctx=ast.Load()),
++                args=[prev, comp],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            comps.append(call)
++            prev = comp
++
++        if len(comps) == 1:
++            return comps[0]
++        else:
++            # Combine with And(...)
++            return ast.Call(
++                func=ast.Name(id='And', ctx=ast.Load()),
++                args=comps,
++                keywords=[],
++                starargs=None,
++                kwargs=None
++            )
++
++    def visit_BoolOp(self, node):
++        """Transform Python boolean ops 'and'/'or' into SymPy And/Or calls."""
++        # Visit subnodes
++        vals = [self.visit(v) for v in node.values]
++        if isinstance(node.op, ast.And):
++            func_name = 'And'
++        elif isinstance(node.op, ast.Or):
++            func_name = 'Or'
++        else:
++            return node
++        return ast.Call(
++            func=ast.Name(id=func_name, ctx=ast.Load()),
++            args=vals,
++            keywords=[],
++            starargs=None,
++            kwargs=None
++        )
++
++    def visit_UnaryOp(self, node):
++        # Transform 'not' into SymPy Not when found
++        new_node = self.generic_visit(node)
++        if isinstance(node.op, ast.Not):
++            return ast.Call(
++                func=ast.Name(id='Not', ctx=ast.Load()),
++                args=[new_node.operand],
++                keywords=[],
++                starargs=None,
++                kwargs=None
++            )
++        return new_node
++
+ 
+ _transformation = {  # items can be added but never re-ordered
+ 0: lambda_notation,

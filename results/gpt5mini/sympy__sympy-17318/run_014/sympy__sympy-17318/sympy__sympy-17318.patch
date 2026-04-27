@@ -1,0 +1,66 @@
+diff --git a/sympy/polys/numberfields.py b/sympy/polys/numberfields.py
+index fe6b14dece..5ca6f5b514 100644
+--- a/sympy/polys/numberfields.py
++++ b/sympy/polys/numberfields.py
+@@ -32,8 +32,6 @@
+ from sympy.polys.specialpolys import cyclotomic_poly
+ from sympy.printing.lambdarepr import LambdaPrinter
+ from sympy.printing.pycode import PythonCodePrinter, MpmathPrinter
+-from sympy.simplify.simplify import _is_sum_surds
+-from sympy.simplify.radsimp import _split_gcd
+ from sympy.utilities import (
+     numbered_symbols, variations, lambdify, public, sift
+ )
+diff --git a/sympy/simplify/radsimp.py b/sympy/simplify/radsimp.py
+index 95ed8cd579..8f720ebd57 100644
+--- a/sympy/simplify/radsimp.py
++++ b/sympy/simplify/radsimp.py
+@@ -1102,6 +1102,8 @@ def split_surds(expr):
+     return g2, a, b
+ 
+ 
++
++
+ def _split_gcd(*a):
+     """
+     split the list of integers ``a`` into a list of integers, ``a1`` having
+@@ -1115,6 +1117,8 @@ def _split_gcd(*a):
+     >>> _split_gcd(55, 35, 22, 14, 77, 10)
+     (5, [55, 35, 10], [22, 14, 77])
+     """
++    if not a:
++        return S.One, [], []
+     g = a[0]
+     b1 = [g]
+     b2 = []
+diff --git a/sympy/simplify/sqrtdenest.py b/sympy/simplify/sqrtdenest.py
+index 00e1dc0868..f0b7653ea8 100644
+--- a/sympy/simplify/sqrtdenest.py
++++ b/sympy/simplify/sqrtdenest.py
+@@ -155,6 +155,14 @@ def _sqrt_match(p):
+     if p.is_Number:
+         res = (p, S.Zero, S.Zero)
+     elif p.is_Add:
++        pargs = sorted(p.args, key=default_sort_key)
++        if all((x**2).is_Rational for x in pargs):
++            r, b, a = split_surds(p)
++            res = a, b, r
++            return list(res)
++        # to make the process canonical, the argument is included in the tuple
++        # so when the max is selected, it will be the largest arg having a
++        # given depth
+         v = [(sqrt_depth(x), x, i) for i, x in enumerate(pargs)]
+         nmax = max(v, key=default_sort_key)
+         if nmax[0] == 0:
+@@ -197,10 +205,7 @@ def _sqrt_match(p):
+                             a1.append(x[1])
+             a = Add(*a1)
+             b = Add(*b1)
+-            try:
+-                res = (a, b, r**2)
+-            except Exception:
+-                res = []
++            res = (a, b, r**2)
+     else:
+         b, r = p.as_coeff_Mul()
+         if is_sqrt(r):

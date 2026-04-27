@@ -1,0 +1,52 @@
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..755692d 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -119,18 +119,30 @@ class HTTPDigestAuth(AuthBase):
+         s += time.ctime().encode('utf-8')
+         s += os.urandom(8)
+ 
++        # Choose qop value to use for the response and header. The
++        # challenge may contain multiple qop-options (comma separated).
++        if qop:
++            qop_options = [o.strip().lower() for o in qop.split(',')]
++            if 'auth' in qop_options:
++                qop_value = 'auth'
++            else:
++                qop_value = qop_options[0]
++        else:
++            qop_value = None
++
+         cnonce = (hashlib.sha1(s).hexdigest()[:16])
+-        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, qop, HA2)
++        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, qop_value, HA2)
+         if _algorithm == 'MD5-SESS':
+             HA1 = hash_utf8('%s:%s:%s' % (HA1, nonce, cnonce))
+ 
+         if qop is None:
+             respdig = KD(HA1, "%s:%s" % (nonce, HA2))
+-        elif qop == 'auth' or 'auth' in qop.split(','):
+-            respdig = KD(HA1, noncebit)
+         else:
+-            # XXX handle auth-int.
+-            return None
++            # Only auth and auth-int are defined; we only support auth for now.
++            if qop_value != 'auth':
++                # XXX handle auth-int.
++                return None
++            respdig = KD(HA1, noncebit)
+ 
+         self.last_nonce = nonce
+ 
+@@ -144,7 +156,10 @@ class HTTPDigestAuth(AuthBase):
+         if entdig:
+             base += ', digest="%s"' % entdig
+         if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++            # Per RFC2617, qop-options should be a quoted string. Curl also
++            # sends qop in quotes (e.g. qop="auth"). Use the chosen qop_value
++            # (e.g. 'auth') in the header.
++            base += ', qop="%s", nc=%s, cnonce="%s"' % (qop_value, ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

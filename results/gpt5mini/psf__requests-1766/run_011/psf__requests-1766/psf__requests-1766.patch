@@ -1,0 +1,20 @@
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..0a26434 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -144,7 +144,14 @@ class HTTPDigestAuth(AuthBase):
+         if entdig:
+             base += ', digest="%s"' % entdig
+         if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++            # Per RFC2617, the qop-options directive value is a quoted
++            # string. Some servers are strict about this and expect the
++            # qop value to be quoted (for example: qop="auth").
++            #
++            # Historically Requests emitted qop=auth (unquoted). Quote
++            # the qop value to be interoperable with those servers and
++            # compatible with tools like curl.
++            base += ', qop="auth", nc=%s, cnonce="%s"' % (ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

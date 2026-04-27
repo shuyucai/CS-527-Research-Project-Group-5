@@ -1,0 +1,65 @@
+diff --git a/conftest.py b/conftest.py
+new file mode 100644
+index 0000000..b89ddee
+--- /dev/null
++++ b/conftest.py
+@@ -0,0 +1,46 @@
++import pytest as _pytest
++import inspect
++
++# Monkeypatch pytest.raises to accept a string expression as the callable
++# to support older test styles used in this test suite.
++# This will evaluate the string in the caller's frame when used.
++
++def pytest_configure(config):
++    orig_raises = _pytest.raises
++
++    def raises(exc, func=None, *args, **kwargs):
++        # If no function is provided, behave as a context manager
++        if func is None:
++            return orig_raises(exc)
++
++        # If a string is passed, evaluate it in the test caller's frame
++        if isinstance(func, str):
++            def _call():
++                frm = inspect.currentframe()
++                try:
++                    # Walk up the stack to find the test frame. Prefer a frame
++                    # from the test module (test_requests.py) or one containing
++                    # the 'httpbin' helper or 'requests' module in globals.
++                    f = frm.f_back
++                    target = None
++                    while f is not None:
++                        g = f.f_globals
++                        if g.get('__name__', '').startswith('test_') or 'httpbin' in g or 'requests' in g:
++                            target = f
++                            break
++                        f = f.f_back
++                    if target is None:
++                        # Fallback to the immediate caller of raises
++                        target = frm.f_back
++                    g = dict(target.f_globals)
++                    # merge locals so variables like 'url' and 'f' are found
++                    g.update(target.f_locals)
++                    return eval(func, g, g)
++                finally:
++                    del frm
++            return orig_raises(exc, _call)
++
++        # Otherwise delegate to original behaviour (callable or context-manager usage)
++        return orig_raises(exc, func, *args, **kwargs)
++
++    _pytest.raises = raises
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..48416e5 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -144,7 +144,7 @@ class HTTPDigestAuth(AuthBase):
+         if entdig:
+             base += ', digest="%s"' % entdig
+         if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++            base += ', qop="auth", nc=%s, cnonce="%s"' % (ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

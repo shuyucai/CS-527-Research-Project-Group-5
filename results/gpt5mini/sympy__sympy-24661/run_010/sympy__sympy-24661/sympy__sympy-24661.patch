@@ -1,0 +1,111 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..1486825b93 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,15 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    # mapping for comparison ops
++    comparators = {
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1186,6 +1195,90 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    def _normalize_operand(self, node):
++        """Normalize patterns like Name * (value) or Mul(Name, value) into a Call to Name(value).
++
++        This addresses tokens produced by stringify_expr where constructs like
++        Integer *(1 ) appear as a BinOp(Name('Integer'), Mult, Constant(1)).
++        """
++        # BinOp pattern: Name * Constant  -> Name(Constant)
++        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
++            if isinstance(node.left, ast.Name) and isinstance(node.right, (ast.Constant, ast.Num, ast.Str)):
++                return ast.Call(func=node.left, args=[node.right], keywords=[], starargs=None, kwargs=None)
++            # case: (Name(...) ) * (Constant) should be handled by visit
++        # Call pattern: Mul(Name, Constant, ...)
++        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'Mul':
++            args = node.args
++            if len(args) >= 2 and isinstance(args[0], ast.Name) and isinstance(args[1], (ast.Constant, ast.Num, ast.Str)):
++                return ast.Call(func=args[0], args=[args[1]], keywords=[], starargs=None, kwargs=None)
++        return node
++
++    def visit_Compare(self, node):
++        # Transform Python comparisons into SymPy relational calls
++        left = self.visit(node.left)
++        comps = []
++        cur_left = left
++        for op, right_node in zip(node.ops, node.comparators):
++            sympy_name = self.comparators.get(op.__class__)
++            right = self.visit(right_node)
++            if sympy_name is None:
++                # Unknown comparator: leave as-is
++                return node
++
++            # normalize operands to turn patterns like Integer * (1) into Integer(1)
++            cur_left = self._normalize_operand(cur_left)
++            right = self._normalize_operand(right)
++
++            cmp_call = ast.Call(
++                func=ast.Name(id=sympy_name, ctx=ast.Load()),
++                args=[cur_left, right],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            comps.append(cmp_call)
++            cur_left = right
++
++        if len(comps) == 1:
++            return comps[0]
++        else:
++            # chain comparisons: combine with And
++            and_call = ast.Call(
++                func=ast.Name(id='And', ctx=ast.Load()),
++                args=comps,
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++            return and_call
++
++    def visit_BoolOp(self, node):
++        # Transform Python boolean 'and'/'or' into SymPy And/Or calls
++        values = [self.visit(v) for v in node.values]
++        op_name = 'And' if isinstance(node.op, ast.And) else 'Or' if isinstance(node.op, ast.Or) else None
++        if op_name is None:
++            return node
++        return ast.Call(
++            func=ast.Name(id=op_name, ctx=ast.Load()),
++            args=values,
++            keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++            starargs=None,
++            kwargs=None
++        )
++
++    def visit_UnaryOp(self, node):
++        # Transform 'not' into SymPy Not
++        if isinstance(node.op, ast.Not):
++            operand = self.visit(node.operand)
++            return ast.Call(
++                func=ast.Name(id='Not', ctx=ast.Load()),
++                args=[operand],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++        return self.generic_visit(node)
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:
