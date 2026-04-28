@@ -1,0 +1,55 @@
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..b55a660d00 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1109,6 +1109,12 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitOr: 'Or',
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
+     }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+@@ -1180,6 +1186,37 @@ def visit_BinOp(self, node):
+             )
+ 
+             if sympy_class in ('Add', 'Mul'):
++
++    def visit_Compare(self, node):
++        if len(node.ops) > 1:
++            # Need to handle chains like a < b < c
++            # Simple recursive approach
++            left = self.visit(node.left)
++            ops = node.ops
++            comparators = node.comparators
++
++            # Build a chain of binary relations
++            # e.g. a < b < c -> And(Lt(a, b, evaluate=False), Lt(b, c, evaluate=False))
++            # Wait, sympy relations don't necessarily chain like that.
++            # Let's check how sympy handles it.
++            pass
++        else:
++            op = node.ops[0]
++            if op.__class__ in self.operators:
++                sympy_class = self.operators[op.__class__]
++                left = self.visit(node.left)
++                right = self.visit(node.comparators[0])
++
++                new_node = ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[left, right],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++                return new_node
++        return self.generic_visit(node)
++
+                 # Denest Add or Mul as appropriate
+                 new_node.args = self.flatten(new_node.args, sympy_class)
+ 

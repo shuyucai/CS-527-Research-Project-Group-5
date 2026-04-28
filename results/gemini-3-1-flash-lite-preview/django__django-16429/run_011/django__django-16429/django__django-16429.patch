@@ -1,0 +1,105 @@
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..f582d0e4f2 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -97,6 +97,7 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+             d.hour,
+             d.minute,
+             d.second,
++            tzinfo=d.tzinfo,
+         )
+     else:
+         pivot = d
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000000..0242584f64
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,38 @@
++import datetime
++import django
++from django.conf import settings
++from django.utils import timezone
++import os
++
++# Configure settings
++if not settings.configured:
++    settings.configure(
++        USE_TZ=True,
++        INSTALLED_APPS=[],
++        SECRET_KEY="secret",
++    )
++    django.setup()
++
++# Now import timesince
++from django.utils.timesince import timesince
++
++def test_long_interval_with_tz():
++    print("Testing long interval with tz...")
++    now = timezone.now()
++    d = now - datetime.timedelta(days=31)
++    
++    # This should not raise TypeError
++    try:
++        result = timesince(d)
++        print(f"Result: {result}")
++        assert "month" in result
++        print("Success!")
++    except TypeError as e:
++        print(f"Caught expected TypeError: {e}")
++    except Exception as e:
++        print(f"Caught unexpected exception: {type(e).__name__}: {e}")
++        import traceback
++        traceback.print_exc()
++
++if __name__ == "__main__":
++    test_long_interval_with_tz()
+diff --git a/test_additional.py b/test_additional.py
+new file mode 100644
+index 0000000000..5eb627501e
+--- /dev/null
++++ b/test_additional.py
+@@ -0,0 +1,25 @@
++import datetime
++import django
++from django.conf import settings
++from django.utils import timezone
++
++# Configure settings
++if not settings.configured:
++    settings.configure(
++        USE_TZ=True,
++        INSTALLED_APPS=[],
++        SECRET_KEY="secret",
++    )
++    django.setup()
++
++from django.utils.timesince import timesince
++
++def test_two_months():
++    now = timezone.now()
++    d = now - datetime.timedelta(days=62)
++    result = timesince(d)
++    print(f"Result for 62 days: {result}")
++    assert "2\xa0months" in result or "2 months" in result
++
++if __name__ == "__main__":
++    test_two_months()
+diff --git a/test_naive.py b/test_naive.py
+new file mode 100644
+index 0000000000..4a261db7cc
+--- /dev/null
++++ b/test_naive.py
+@@ -0,0 +1,12 @@
++import datetime
++from django.utils.timesince import timesince
++
++def test_naive():
++    now = datetime.datetime(2023, 10, 1, 12, 0)
++    d = now - datetime.timedelta(days=31)
++    result = timesince(d, now=now)
++    print(f"Result for naive: {result}")
++    assert "1\xa0month" in result or "1 month" in result
++
++if __name__ == "__main__":
++    test_naive()

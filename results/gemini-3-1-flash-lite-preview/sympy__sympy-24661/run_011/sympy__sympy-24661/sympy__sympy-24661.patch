@@ -1,0 +1,57 @@
+diff --git a/check_expected.py b/check_expected.py
+new file mode 100644
+index 0000000000..1c7059ca08
+--- /dev/null
++++ b/check_expected.py
+@@ -0,0 +1 @@
++from sympy import Lt; print(Lt(1, 2, evaluate=False))
+diff --git a/simple_reproduce.py b/simple_reproduce.py
+new file mode 100644
+index 0000000000..4354f8f03c
+--- /dev/null
++++ b/simple_reproduce.py
+@@ -0,0 +1 @@
++from sympy.parsing.sympy_parser import parse_expr; print(parse_expr('1 < 2', evaluate=False))
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..ea7e1e70e0 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1109,6 +1109,12 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitOr: 'Or',
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
+     }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+@@ -1183,6 +1189,25 @@ def visit_BinOp(self, node):
+                 # Denest Add or Mul as appropriate
+                 new_node.args = self.flatten(new_node.args, sympy_class)
+ 
++    def visit_Compare(self, node):
++        if len(node.ops) != 1:
++            return node
++        
++        op = node.ops[0]
++        if op.__class__ in self.operators:
++            sympy_class = self.operators[op.__class__]
++            left = self.visit(node.left)
++            right = self.visit(node.comparators[0])
++            
++            return ast.Call(
++                func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                args=[left, right],
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++        return node
++
+             return new_node
+         return node
+ 

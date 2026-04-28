@@ -1,0 +1,88 @@
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..f582d0e4f2 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -97,6 +97,7 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+             d.hour,
+             d.minute,
+             d.second,
++            tzinfo=d.tzinfo,
+         )
+     else:
+         pivot = d
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000000..f2c75bb20d
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,37 @@
++import datetime
++from django.conf import settings
++from django.utils import timezone
++import os
++
++# Configure Django
++if not settings.configured:
++    settings.configure(
++        USE_TZ=True,
++        INSTALLED_APPS=[],
++        LANGUAGE_CODE='en-us',
++        SECRET_KEY='supersecret',
++    )
++    import django
++    django.setup()
++
++from django.utils.timesince import timesince
++
++def test_long_interval_with_tz():
++    # Simulate timezone-aware now
++    now = timezone.now()
++    # d is 31 days in the past (more than one month)
++    d = now - datetime.timedelta(days=31)
++    print(f"Now: {now}")
++    print(f"d: {d}")
++    res = timesince(d)
++    print(f"timesince(d): {res}")
++    assert "month" in res
++
++if __name__ == "__main__":
++    try:
++        test_long_interval_with_tz()
++        print("Success!")
++    except Exception as e:
++        print(f"Caught exception: {e}")
++        import traceback
++        traceback.print_exc()
+diff --git a/test_timesince_simple.py b/test_timesince_simple.py
+new file mode 100644
+index 0000000000..eb5572c57e
+--- /dev/null
++++ b/test_timesince_simple.py
+@@ -0,0 +1,27 @@
++import datetime
++import pytz
++from django.conf import settings
++from django.utils import timezone
++import django
++
++if not settings.configured:
++    settings.configure(
++        USE_TZ=True,
++        INSTALLED_APPS=[],
++        LANGUAGE_CODE='en-us',
++        SECRET_KEY='supersecret',
++    )
++    django.setup()
++
++from django.utils.timesince import timesince
++
++# Create timezone aware datetime
++tz = pytz.timezone('UTC')
++d = datetime.datetime(2023, 2, 1, tzinfo=tz)
++now = datetime.datetime(2023, 3, 4, tzinfo=tz)
++
++# Expected: 1 month, 3 days
++res = timesince(d, now=now)
++print(f"Result: {res}")
++assert "1\xa0month" in res
++assert "3\xa0days" in res

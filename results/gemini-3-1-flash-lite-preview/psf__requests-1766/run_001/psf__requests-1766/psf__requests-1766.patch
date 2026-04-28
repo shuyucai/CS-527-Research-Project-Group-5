@@ -1,0 +1,23 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000..2b8fb6d
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,17 @@
++from requests.auth import HTTPDigestAuth
++import hashlib
++
++auth = HTTPDigestAuth('user', 'pass')
++auth.chal = {
++    'realm': 'realm',
++    'nonce': 'nonce',
++    'qop': 'auth'
++}
++
++# Mocking other attributes needed by build_digest_header
++auth.last_nonce = ''
++auth.nonce_count = 0
++
++header = auth.build_digest_header('GET', 'http://example.com/digest-auth')
++print(f"Header: {header}")
++assert 'qop="auth"' in header, "qop is not quoted"

@@ -1,0 +1,61 @@
+diff --git a/reproduce_digest.py b/reproduce_digest.py
+new file mode 100644
+index 0000000..a586b9c
+--- /dev/null
++++ b/reproduce_digest.py
+@@ -0,0 +1,42 @@
++import requests
++from requests.auth import HTTPDigestAuth
++from requests.compat import urlparse
++
++# Mocking the response for the request
++class MockRequest:
++    def __init__(self, method, url):
++        self.method = method
++        self.url = url
++        self.headers = {}
++        self.body = None
++    
++    def copy(self):
++        return self
++
++class MockResponse:
++    def __init__(self, request):
++        self.request = request
++        self.headers = {'www-authenticate': 'Digest realm="test", nonce="12345", qop="auth", algorithm=MD5'}
++        self.cookies = {}
++        self.connection = None
++        self.content = b""
++        self.raw = None
++        self.history = []
++
++def test_digest_auth_header():
++    auth = HTTPDigestAuth('user', 'pass')
++    # Set the challenge as if we received a 401
++    from requests.utils import parse_dict_header
++    auth.chal = parse_dict_header('realm="test", nonce="12345", qop="auth", algorithm=MD5')
++    
++    # Manually call build_digest_header
++    header = auth.build_digest_header('GET', 'http://example.com/digest-auth')
++    print(f"Generated header: {header}")
++    
++    if 'qop=auth' in header and 'qop="auth"' not in header:
++        print("Test FAILED: qop is not quoted")
++    else:
++        print("Test PASSED: qop is quoted")
++
++if __name__ == "__main__":
++    test_digest_auth_header()
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..48416e5 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -144,7 +144,7 @@ class HTTPDigestAuth(AuthBase):
+         if entdig:
+             base += ', digest="%s"' % entdig
+         if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++            base += ', qop="auth", nc=%s, cnonce="%s"' % (ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

@@ -1,0 +1,47 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000..4e6a814
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,11 @@
++from requests.auth import HTTPDigestAuth
++
++auth = HTTPDigestAuth('user', 'pass')
++auth.chal = {
++    'realm': 'realm',
++    'nonce': 'nonce',
++    'qop': 'auth'
++}
++
++header = auth.build_digest_header('GET', 'http://example.com/digest-auth')
++print(header)
+diff --git a/reproduce_issue_2.py b/reproduce_issue_2.py
+new file mode 100644
+index 0000000..4b3536d
+--- /dev/null
++++ b/reproduce_issue_2.py
+@@ -0,0 +1,11 @@
++from requests.auth import HTTPDigestAuth
++
++auth = HTTPDigestAuth('user', 'pass')
++auth.chal = {
++    'realm': 'realm',
++    'nonce': 'nonce',
++    'qop': 'auth,auth-int'
++}
++
++header = auth.build_digest_header('GET', 'http://example.com/digest-auth')
++print(header)
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..6af1100 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -144,7 +144,7 @@ class HTTPDigestAuth(AuthBase):
+         if entdig:
+             base += ', digest="%s"' % entdig
+         if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++            base += ', qop="%s", nc=%s, cnonce="%s"' % (qop, ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

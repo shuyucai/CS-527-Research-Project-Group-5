@@ -1,0 +1,41 @@
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..f582d0e4f2 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -97,6 +97,7 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+             d.hour,
+             d.minute,
+             d.second,
++            tzinfo=d.tzinfo,
+         )
+     else:
+         pivot = d
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000000..07ab10d413
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,23 @@
++import datetime
++from django.conf import settings
++from django.utils import timezone
++from django.utils.timesince import timesince
++import os
++
++# Configure Django settings
++if not settings.configured:
++    settings.configure(
++        USE_TZ=True,
++    )
++
++def test_long_interval_with_tz():
++    now = timezone.now()
++    d = now - datetime.timedelta(days=31)
++    try:
++        result = timesince(d)
++        print(f"Result: {result}")
++    except TypeError as e:
++        print(f"Caught expected TypeError: {e}")
++
++if __name__ == "__main__":
++    test_long_interval_with_tz()

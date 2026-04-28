@@ -1,0 +1,228 @@
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..f582d0e4f2 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -97,6 +97,7 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+             d.hour,
+             d.minute,
+             d.second,
++            tzinfo=d.tzinfo,
+         )
+     else:
+         pivot = d
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000000..5e3cf0d4c2
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,42 @@
++import datetime
++import os
++import sys
++
++# Add the repository root to the sys.path
++sys.path.append('/testbed')
++
++# Mocking Django settings
++from django.conf import settings
++if not settings.configured:
++    settings.configure(
++        USE_TZ=True,
++        INSTALLED_APPS=[
++            'django.contrib.admin',
++            'django.contrib.auth',
++            'django.contrib.contenttypes',
++            'django.contrib.messages',
++            'django.contrib.sessions',
++            'django.contrib.staticfiles',
++        ],
++    )
++    import django
++    django.setup()
++
++from django.utils import timezone
++from django.utils.timesince import timesince
++
++def reproduce():
++    now = timezone.now()
++    d = now - datetime.timedelta(days=31)
++    try:
++        result = timesince(d)
++        print(f"Result: {result}")
++    except TypeError as e:
++        print(f"Caught expected error: {e}")
++    except Exception as e:
++        import traceback
++        traceback.print_exc()
++        print(f"Caught unexpected error type: {type(e)}")
++
++if __name__ == "__main__":
++    reproduce()
+diff --git a/test_cases.py b/test_cases.py
+new file mode 100644
+index 0000000000..2a6246c1e9
+--- /dev/null
++++ b/test_cases.py
+@@ -0,0 +1,46 @@
++import datetime
++import sys
++import os
++sys.path.append('/testbed')
++from django.conf import settings
++if not settings.configured:
++    settings.configure(
++        USE_TZ=True,
++        INSTALLED_APPS=[],
++    )
++    import django
++    django.setup()
++
++from django.utils import timezone
++from django.utils.timesince import timesince
++import pytz
++
++def test_no_tz():
++    # Test for non-aware datetime
++    d = datetime.datetime.now() - datetime.timedelta(days=31)
++    result = timesince(d)
++    print(f"Non-aware result: {result}")
++    assert "month" in result
++
++def test_aware_tz():
++    # Test for aware datetime
++    now = timezone.now()
++    d = now - datetime.timedelta(days=31)
++    result = timesince(d)
++    print(f"Aware result: {result}")
++    assert "month" in result
++
++def test_custom_tz():
++    # Test with a specific timezone
++    tz = pytz.timezone('UTC')
++    now = datetime.datetime.now(tz)
++    d = now - datetime.timedelta(days=31)
++    result = timesince(d, now=now)
++    print(f"Custom TZ result: {result}")
++    assert "month" in result
++
++if __name__ == "__main__":
++    test_no_tz()
++    test_aware_tz()
++    test_custom_tz()
++    print("All tests passed!")
+diff --git a/test_different_tz.py b/test_different_tz.py
+new file mode 100644
+index 0000000000..6394364b6b
+--- /dev/null
++++ b/test_different_tz.py
+@@ -0,0 +1,23 @@
++import datetime
++import sys
++sys.path.append('/testbed')
++from django.conf import settings
++if not settings.configured:
++    settings.configure(USE_TZ=True)
++
++from django.utils.timesince import timesince
++import pytz
++
++def test_different_tz():
++    tz1 = pytz.timezone('UTC')
++    tz2 = pytz.timezone('US/Pacific')
++    d = datetime.datetime(2024, 1, 1, 10, 0, 0, tzinfo=tz1)
++    now = datetime.datetime(2024, 2, 1, 10, 0, 0, tzinfo=tz2)
++    # This should work fine as subtraction between aware datetimes in python
++    # works if they are aware, even if they have different tzinfo.
++    # The problem would be if one is naive and one is aware, which is what the original issue was.
++    result = timesince(d, now=now)
++    print(f"Different TZ result: {result}")
++
++if __name__ == "__main__":
++    test_different_tz()
+diff --git a/test_edge_cases.py b/test_edge_cases.py
+new file mode 100644
+index 0000000000..ac3e15e74a
+--- /dev/null
++++ b/test_edge_cases.py
+@@ -0,0 +1,24 @@
++import datetime
++import sys
++sys.path.append('/testbed')
++from django.conf import settings
++if not settings.configured:
++    settings.configure(
++        USE_TZ=True,
++    )
++    import django
++    django.setup()
++
++from django.utils import timezone
++from django.utils.timesince import timesince
++
++def test_future():
++    now = timezone.now()
++    d = now + datetime.timedelta(days=1)
++    result = timesince(d)
++    print(f"Future result (d > now): {result}")
++    # The doc says it should return "0 minutes" if d > now
++    assert "0" in result
++
++if __name__ == "__main__":
++    test_future()
+diff --git a/test_leap_year.py b/test_leap_year.py
+new file mode 100644
+index 0000000000..fbd9331d1c
+--- /dev/null
++++ b/test_leap_year.py
+@@ -0,0 +1,22 @@
++import datetime
++import sys
++sys.path.append('/testbed')
++from django.conf import settings
++if not settings.configured:
++    settings.configure(USE_TZ=False)
++    import django
++    django.setup()
++
++from django.utils.timesince import timesince
++
++def test_leap_year():
++    # 2024 is a leap year, Feb 29 exists.
++    # 2023 Feb 28 to 2024 Feb 29 should be 1 year and 1 day, or maybe not exact month?
++    # Actually let's test a simpler Feb 29 case.
++    d = datetime.datetime(2024, 2, 29, 10, 0, 0)
++    now = datetime.datetime(2024, 3, 30, 10, 0, 0)
++    result = timesince(d, now=now)
++    print(f"Leap year result: {result}")
++
++if __name__ == "__main__":
++    test_leap_year()
+diff --git a/test_leap_year_tz.py b/test_leap_year_tz.py
+new file mode 100644
+index 0000000000..f82c431399
+--- /dev/null
++++ b/test_leap_year_tz.py
+@@ -0,0 +1,23 @@
++import datetime
++import sys
++sys.path.append('/testbed')
++from django.conf import settings
++if not settings.configured:
++    settings.configure(USE_TZ=True)
++    import django
++    django.setup()
++
++from django.utils import timezone
++from django.utils.timesince import timesince
++import pytz
++
++def test_leap_year_tz():
++    # Feb 29 2024 with UTC timezone
++    tz = pytz.timezone('UTC')
++    d = datetime.datetime(2024, 2, 29, 10, 0, 0, tzinfo=tz)
++    now = datetime.datetime(2024, 3, 30, 10, 0, 0, tzinfo=tz)
++    result = timesince(d, now=now)
++    print(f"Leap year TZ result: {result}")
++
++if __name__ == "__main__":
++    test_leap_year_tz()

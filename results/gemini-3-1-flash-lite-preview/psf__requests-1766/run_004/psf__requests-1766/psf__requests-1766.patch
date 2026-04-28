@@ -1,0 +1,37 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000..513b13b
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,31 @@
++from requests.auth import HTTPDigestAuth
++import mock
++
++# Mocking the response component to verify the generated header
++# We want to check what build_digest_header produces.
++
++auth = HTTPDigestAuth('user', 'passwd')
++auth.chal = {
++    'realm': 'realm',
++    'nonce': 'nonce',
++    'algorithm': 'MD5',
++    'qop': 'auth'
++}
++
++# We need to set up some state so build_digest_header runs
++auth.last_nonce = 'nonce'
++auth.nonce_count = 1
++
++# Mocking the method and url
++method = 'GET'
++url = 'http://example.com/digest-auth'
++
++header = auth.build_digest_header(method, url)
++print(header)
++
++if 'qop="auth"' in header:
++    print("SUCCESS: qop is quoted")
++elif 'qop=auth' in header:
++    print("FAILURE: qop is NOT quoted")
++else:
++    print("UNKNOWN: qop not found in header")

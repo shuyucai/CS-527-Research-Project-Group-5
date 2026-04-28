@@ -1,0 +1,125 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000..224cc04
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,55 @@
++import requests
++from requests.auth import HTTPDigestAuth
++from requests.compat import urlparse
++
++# Mocking the response to inspect the generated header
++class MockResponse:
++    def __init__(self, auth_header):
++        self.headers = {'www-authenticate': auth_header}
++        self.status_code = 401
++    
++    def get(self, key, default=None):
++        return self.headers.get(key, default)
++
++def test_qop_in_digest_header():
++    auth = HTTPDigestAuth('user', 'pass')
++    # Mock a challenge
++    auth.chal = {
++        'realm': 'test',
++        'nonce': '12345',
++        'qop': 'auth',
++        'algorithm': 'MD5',
++        'opaque': '67890'
++    }
++    
++    header = auth.build_digest_header('GET', 'http://example.com/digest-auth')
++    print(f"Generated header: {header}")
++    
++    # Check if qop is quoted correctly
++    # The requirement says 'qop-options' in the directive should be quoted.
++    # Actually, the PR description says:
++    # "the value of 'qop-options' directive should be quoted with double quotes"
++    # Looking at RFC2617, it's actually about the qop parameter in the Authorization header.
++    # Wait, RFC2617 says:
++    # "If the qop directive is used, then the client MUST include the qop parameter..."
++    # The PR description text is a bit confusing because "qop-options" is a SERVER header (WWW-Authenticate).
++    # But the change should be in the CLIENT (Authorization) header.
++    # Let me re-read the PR description.
++    # "Based on RFC2617, the value of 'qop-options' directive should be quoted with double quotes"
++    # "curl comamnd-line tool also appends these quotes."
++    # Let's check how the Authorization header is constructed.                
++    
++    # In `requests/auth.py`:
++    # 146:        if qop:
++    # 147:            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++    
++    # Ah, I see: `qop=auth` (no quotes around "auth") vs `qop="auth"`
++    
++    assert 'qop="auth"' in header, "qop should be quoted"                
++
++if __name__ == "__main__":
++    try:
++        test_qop_in_digest_header()
++        print("Test passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
+diff --git a/reproduce_issue_v2.py b/reproduce_issue_v2.py
+new file mode 100644
+index 0000000..d5fc7df
+--- /dev/null
++++ b/reproduce_issue_v2.py
+@@ -0,0 +1,45 @@
++import requests
++from requests.auth import HTTPDigestAuth
++from requests.compat import urlparse
++
++# Mocking the response to inspect the generated header
++def test_multiple_qops_in_digest_header():
++    auth = HTTPDigestAuth('user', 'pass')
++    # Mock a challenge
++    auth.chal = {
++        'realm': 'test',
++        'nonce': '12345',
++        'qop': 'auth,auth-int',
++        'algorithm': 'MD5',
++        'opaque': '67890'
++    }
++    
++    header = auth.build_digest_header('GET', 'http://example.com/digest-auth')
++    print(f"Generated header: {header}")                
++    
++    # Check if qop is correctly quoted
++    # My previous change was hardcoded:
++    # base += ', qop="auth", nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++    
++    # Wait, if the server supports 'auth,auth-int', does the client always have to choose 'auth'?
++    # The code says:
++    # elif qop == 'auth' or 'auth' in qop.split(','):
++    #     respdig = KD(HA1, noncebit)
++    
++    # If I choose 'auth', I should probably set qop="auth".
++    # What if I want to use auth-int?
++    # The current code seems to only support 'auth' via:
++    # else:
++    #     # XXX handle auth-int.
++    #     return None
++    
++    # So it seems 'auth' is the only thing supported anyway in this implementation.
++    
++    assert 'qop="auth"' in header, "qop should be quoted"                
++
++if __name__ == "__main__":
++    try:
++        test_multiple_qops_in_digest_header()
++        print("Test passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..48416e5 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -144,7 +144,7 @@ class HTTPDigestAuth(AuthBase):
+         if entdig:
+             base += ', digest="%s"' % entdig
+         if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++            base += ', qop="auth", nc=%s, cnonce="%s"' % (ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 

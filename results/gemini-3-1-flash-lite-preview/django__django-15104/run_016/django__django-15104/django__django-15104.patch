@@ -1,0 +1,46 @@
+diff --git a/reproduction_script.py b/reproduction_script.py
+new file mode 100644
+index 0000000000..edb6fbc4ea
+--- /dev/null
++++ b/reproduction_script.py
+@@ -0,0 +1,40 @@
++from django.conf import settings
++settings.configure(INSTALLED_APPS=['testapp'], DATABASES={
++    'default': {
++        'ENGINE': 'django.db.backends.sqlite3',
++        'NAME': ':memory:',
++    },
++})
++import django
++django.setup()
++
++from django.db import models
++from django.db.migrations.autodetector import MigrationAutodetector
++from django.db.migrations.state import ModelState, ProjectState
++from django.test import TestCase
++import sys
++
++class CustomFKField(models.ForeignKey):
++    def __init__(self, *args, **kwargs):
++        kwargs['to'] = 'testapp.HardcodedModel'
++        super().__init__(*args, **kwargs)
++    def deconstruct(self):
++        name, path, args, kwargs = super().deconstruct()
++        del kwargs["to"]
++        return name, path, args, kwargs
++
++class ReproTestCase(TestCase):
++    def test_reprodution(self):
++        before = ProjectState()
++        before.add_model(ModelState('testapp', 'HardcodedModel', []))
++        after = ProjectState()
++        after.add_model(ModelState('testapp', 'HardcodedModel', []))
++        after.add_model(ModelState('testapp', 'TestModel', [('custom', CustomFKField(on_delete=models.CASCADE))]))
++        changes = MigrationAutodetector(before, after)._detect_changes()
++        self.assertEqual(len(changes['testapp']), 1)
++
++if __name__ == '__main__':
++    from django.test.runner import DiscoverRunner
++    runner = DiscoverRunner()
++    if not runner.run_tests(['reproduction_script']):
++        sys.exit(1)

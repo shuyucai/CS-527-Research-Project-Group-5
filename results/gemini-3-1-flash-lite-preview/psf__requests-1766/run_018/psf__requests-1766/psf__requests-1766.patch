@@ -1,0 +1,48 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000..6347706
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,14 @@
++import requests
++from requests.auth import HTTPDigestAuth
++import io
++
++# Test to check if it correctly picks up 'auth' even if not first
++auth = HTTPDigestAuth('user', 'pass')
++auth.chal = {'realm': 'test', 'nonce': '123456', 'qop': 'auth-int,auth', 'algorithm': 'MD5'}
++header = auth.build_digest_header('GET', 'http://example.com/')
++print(f"Header: {header}")
++
++if 'qop="auth"' in header:
++    print("qop is set to 'auth'")
++else:
++    print("qop is NOT set to 'auth'")
+diff --git a/requests/auth.py b/requests/auth.py
+index a3de123..2464556 100644
+--- a/requests/auth.py
++++ b/requests/auth.py
+@@ -120,7 +120,13 @@ class HTTPDigestAuth(AuthBase):
+         s += os.urandom(8)
+ 
+         cnonce = (hashlib.sha1(s).hexdigest()[:16])
+-        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, qop, HA2)
++        # If 'qop' is present, use 'auth' if supported
++        if qop and 'auth' in [q.strip() for q in qop.split(',')]:
++            qop_directive = 'auth'
++        else:
++            qop_directive = qop.split(',')[0] if qop else qop
++        
++        noncebit = "%s:%s:%s:%s:%s" % (nonce, ncvalue, cnonce, qop_directive, HA2)
+         if _algorithm == 'MD5-SESS':
+             HA1 = hash_utf8('%s:%s:%s' % (HA1, nonce, cnonce))
+ 
+@@ -144,7 +150,7 @@ class HTTPDigestAuth(AuthBase):
+         if entdig:
+             base += ', digest="%s"' % entdig
+         if qop:
+-            base += ', qop=auth, nc=%s, cnonce="%s"' % (ncvalue, cnonce)
++            base += ', qop="%s", nc=%s, cnonce="%s"' % (qop_directive, ncvalue, cnonce)
+ 
+         return 'Digest %s' % (base)
+ 
