@@ -1,0 +1,52 @@
+diff --git a/repro_final.py b/repro_final.py
+new file mode 100644
+index 0000000000..d2da9d294d
+--- /dev/null
++++ b/repro_final.py
+@@ -0,0 +1,38 @@
++import sys
++import django
++from django.conf import settings
++
++if not settings.configured:
++    settings.configure(INSTALLED_APPS=['repro_app'])
++    django.setup()
++
++from django.db import models
++from django.db.migrations.autodetector import MigrationAutodetector
++from django.db.migrations.state import ModelState, ProjectState
++
++class CustomFKField(models.ForeignKey):
++    def __init__(self, *args, **kwargs):
++        kwargs['to'] = 'repro_app.HardcodedModel'
++        super().__init__(*args, **kwargs)
++    def deconstruct(self):
++        name, path, args, kwargs = super().deconstruct()
++        kwargs.pop('to', None)
++        return name, path, args, kwargs
++
++def run_repro():
++    before = ProjectState()
++    before.add_model(ModelState('repro_app', 'HardcodedModel', []))
++    after = ProjectState()
++    after.add_model(ModelState('repro_app', 'HardcodedModel', []))
++    after.add_model(ModelState('repro_app', 'TestModel', [('custom', CustomFKField(on_delete=models.CASCADE))]))
++    
++    autodetector = MigrationAutodetector(before, after)
++    try:
++        autodetector._detect_changes()
++        print("Success!")
++    except KeyError as e:
++        print(f"Caught expected KeyError: {e}")
++        sys.exit(1)
++
++if __name__ == "__main__":
++    run_repro()
+diff --git a/repro_test.py b/repro_test.py
+new file mode 100644
+index 0000000000..a9cd777cab
+--- /dev/null
++++ b/repro_test.py
+@@ -0,0 +1,2 @@
++import django
++print(django.get_version())

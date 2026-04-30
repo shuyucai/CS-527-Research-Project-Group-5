@@ -1,0 +1,50 @@
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..4a5407e979 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -96,7 +96,7 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+             min(MONTHS_DAYS[pivot_month - 1], d.day),
+             d.hour,
+             d.minute,
+-            d.second,
++            d.second, tzinfo=d.tzinfo,
+         )
+     else:
+         pivot = d
+diff --git a/reproduce_error.py b/reproduce_error.py
+new file mode 100644
+index 0000000000..4c12909d6d
+--- /dev/null
++++ b/reproduce_error.py
+@@ -0,0 +1,31 @@
++import sys
++import datetime
++import os
++
++# Add /testbed to sys.path
++sys.path.append('/testbed')
++
++from django.utils.timezone import make_aware, utc
++from django.utils.timesince import timesince
++from django.conf import settings
++
++if not settings.configured:
++    settings.configure(USE_TZ=True)
++
++def test_long_interval_with_tz():
++    d = make_aware(datetime.datetime(2020, 1, 1), timezone=utc)
++    now = make_aware(datetime.datetime(2020, 2, 2), timezone=utc)
++    
++    print(f"d aware: {d.tzinfo is not None}")
++    print(f"now aware: {now.tzinfo is not None}")
++    
++    try:
++        result = timesince(d, now=now)
++        print(f"Result: {result}")
++    except TypeError as e:
++        print(f"Caught TypeError: {e}")
++    except Exception as e:
++        print(f"Caught unexpected exception: {type(e).__name__}: {e}")
++
++if __name__ == "__main__":
++    test_long_interval_with_tz()

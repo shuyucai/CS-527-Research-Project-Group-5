@@ -1,0 +1,82 @@
+diff --git a/django/db/migrations/autodetector.py b/django/db/migrations/autodetector.py
+index 97977d72ef..bf9c2acd26 100644
+--- a/django/db/migrations/autodetector.py
++++ b/django/db/migrations/autodetector.py
+@@ -96,7 +96,7 @@ class MigrationAutodetector:
+         for name, field in sorted(fields.items()):
+             deconstruction = self.deep_deconstruct(field)
+             if field.remote_field and field.remote_field.model:
+-                del deconstruction[2]['to']
++                deconstruction[2].pop('to', None)
+             fields_def.append(deconstruction)
+         return fields_def
+ 
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 0000000000..47f74fd5a6
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,63 @@
++import sys
++import os
++
++# Add /testbed to the path to find django
++sys.path.insert(0, '/testbed')
++
++from django.conf import settings
++if not settings.configured:
++    settings.configure(
++        INSTALLED_APPS=[
++            'django.contrib.contenttypes',
++            'django.contrib.auth',
++        ],
++    )
++
++import django
++django.setup()
++
++from django.db import models
++from django.db.migrations.autodetector import MigrationAutodetector
++from django.db.migrations.state import ModelState, ProjectState
++
++class CustomFKField(models.ForeignKey):
++    def __init__(self, *args, **kwargs):
++        kwargs['to'] = 'testapp.HardcodedModel'
++        super().__init__(*args, **kwargs)
++    def deconstruct(self):
++        name, path, args, kwargs = super().deconstruct()
++        if "to" in kwargs:
++            del kwargs["to"]
++        return name, path, args, kwargs
++
++def test_reproduction():
++    before = ProjectState()
++    before.add_model(ModelState('testapp', 'HardcodedModel', []))
++    before.add_model(ModelState('testapp', 'OldModel', [('name', models.CharField(max_length=100))]))
++    
++    after = ProjectState()
++    after.add_model(ModelState('testapp', 'HardcodedModel', []))
++    after.add_model(ModelState('testapp', 'TestModel', [('name', models.CharField(max_length=100))]))
++    after.add_model(ModelState('testapp', 'AnotherModel', [('custom', CustomFKField(on_delete=models.CASCADE))]))
++    
++    autodetector = MigrationAutodetector(before, after)
++    try:
++        changes = autodetector._detect_changes()
++        print("Successfully detected changes!")
++    except KeyError as e:
++        if str(e) == "'to'":
++            print(f"Caught expected KeyError: {e}")
++            sys.exit(0)
++        else:
++            print(f"Caught unexpected KeyError: {e}")
++            sys.exit(1)
++    except Exception as e:
++        print(f"Caught unexpected exception: {type(e).__name__}: {e}")
++        import traceback
++        traceback.print_exc()
++        sys.exit(1)
++    else:
++        print("No error caught.")
++
++if __name__ == "__main__":
++    test_reproduction()

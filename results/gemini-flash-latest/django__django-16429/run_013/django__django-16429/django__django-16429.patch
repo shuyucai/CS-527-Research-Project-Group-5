@@ -1,0 +1,31 @@
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..34dbe80529 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -90,13 +90,14 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+         if pivot_month > 12:
+             pivot_month -= 12
+             pivot_year += 1
+-        pivot = datetime.datetime(
++                pivot = datetime.datetime(
+             pivot_year,
+             pivot_month,
+             min(MONTHS_DAYS[pivot_month - 1], d.day),
+             d.hour,
+             d.minute,
+             d.second,
++            tzinfo=d.tzinfo,
+         )
+     else:
+         pivot = d
+diff --git a/reproduction_output.txt b/reproduction_output.txt
+new file mode 100644
+index 0000000000..86d46b3f7f
+--- /dev/null
++++ b/reproduction_output.txt
+@@ -0,0 +1,5 @@
++Traceback (most recent call last):
++  File "<string>", line 11, in <module>
++  File "/testbed/django/utils/timesince.py", line 103, in timesince
++    remaining_time = (now - pivot).total_seconds()
++TypeError: can't subtract offset-naive and offset-aware datetimes

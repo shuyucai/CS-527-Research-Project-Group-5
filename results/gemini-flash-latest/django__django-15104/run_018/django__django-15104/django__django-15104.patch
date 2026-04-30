@@ -1,0 +1,54 @@
+diff --git a/repro_issue.py b/repro_issue.py
+new file mode 100644
+index 0000000000..5b0ca192f8
+--- /dev/null
++++ b/repro_issue.py
+@@ -0,0 +1,48 @@
++import sys
++import django
++from django.conf import settings
++
++settings.configure(
++    INSTALLED_APPS=['django.contrib.contenttypes'],
++    DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}},
++)
++django.setup()
++
++from django.db import models
++from django.db.migrations.autodetector import MigrationAutodetector
++from django.db.migrations.state import ModelState, ProjectState
++
++class CustomFKField(models.ForeignKey):
++    def __init__(self, *args, **kwargs):
++        kwargs['to'] = 'testapp.HardcodedModel'
++        super().__init__(*args, **kwargs)
++    def deconstruct(self):
++        name, path, args, kwargs = super().deconstruct()
++        if 'to' in kwargs:
++            del kwargs['to']
++        return name, path, args, kwargs
++
++def test_reproduction():
++    before = ProjectState()
++    before.add_model(ModelState('testapp', 'HardcodedModel', []))
++    after = ProjectState()
++    after.add_model(ModelState('testapp', 'HardcodedModel', []))
++    after.add_model(ModelState('testapp', 'TestModel', [('custom', CustomFKField(on_delete=models.CASCADE))]))
++    
++    autodetector = MigrationAutodetector(before, after)
++    try:
++        changes = autodetector._detect_changes()
++        print('No error occurred.')
++    except KeyError as e:
++        print(f'Caught expected KeyError: {e}')
++        import traceback
++        traceback.print_exc()
++        sys.exit(1)
++    except Exception as e:
++        print(f'Caught unexpected exception: {type(e).__name__}: {e}')
++        import traceback
++        traceback.print_exc()
++        sys.exit(1)
++
++if __name__ == '__main__':
++    test_reproduction()

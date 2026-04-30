@@ -1,0 +1,138 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 0000000000..e99d8a1ad0
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,20 @@
++from sympy.parsing.sympy_parser import parse_expr
++from sympy import Lt, Symbol
++import sympy
++
++def test_relationals():
++    expr = '1 < 2'
++    result = parse_expr(expr, evaluate=False)
++    expected = Lt(1, 2, evaluate=False)
++
++    print(f'Parsing: {expr}')
++    print(f'Result: {result} (type: {type(result)})')
++    print(f'Expected: {expected} (type: {type(expected)})')
++
++    if result == expected and isinstance(result, sympy.Basic):
++         print('SUCCESS: Result matches expected output.')
++    else:
++         print('FAILURE: Result does not match expected output.')
++
++if __name__ == '__main__':
++    test_relationals()
+diff --git a/repro_chained.py b/repro_chained.py
+new file mode 100644
+index 0000000000..e3e59ac318
+--- /dev/null
++++ b/repro_chained.py
+@@ -0,0 +1,30 @@
++from sympy.parsing.sympy_parser import parse_expr
++from sympy import Lt, Symbol, And, Le, Eq
++import sympy
++
++def test_chained_relationals():
++    expr = '1 < 2 <= 3'
++    result = parse_expr(expr, evaluate=False)
++    # Chained 1 < 2 <= 3 should be And(Lt(1, 2, evaluate=False), Le(2, 3, evaluate=False), evaluate=False)
++    expected = And(Lt(1, 2, evaluate=False), Le(2, 3, evaluate=False), evaluate=False)
++
++    print(f'Parsing: {expr}')
++    print(f'Result: {result} (type: {type(result)})')
++    print(f'Expected: {expected} (type: {type(expected)})')
++
++    if result == expected and isinstance(result, And):
++         print('SUCCESS: Chained relationals match expected output.')
++    else:
++         print('FAILURE: Chained relationals do not match expected output.')
++
++    expr2 = '1 == 1'
++    result2 = parse_expr(expr2, evaluate=False)
++    print(f'Parsing: {expr2}')
++    print(f'Result: {result2} (type: {type(result2)})')
++    if isinstance(result2, Eq) and result2.lhs == 1 and result2.rhs == 1:
++        print('SUCCESS: Simple equality matches.')
++    else:
++        print('FAILURE: Simple equality fails.')
++
++if __name__ == '__main__':
++    test_chained_relationals()
+diff --git a/sympy/parsing/sympy_parser.py b/sympy/parsing/sympy_parser.py
+index 52711d1324..0f0bedf1cc 100644
+--- a/sympy/parsing/sympy_parser.py
++++ b/sympy/parsing/sympy_parser.py
+@@ -1110,6 +1110,14 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         ast.BitAnd: 'And',
+         ast.BitXor: 'Not',
+     }
++    comparisons = {
++        ast.Eq: 'Eq',
++        ast.NotEq: 'Ne',
++        ast.Lt: 'Lt',
++        ast.LtE: 'Le',
++        ast.Gt: 'Gt',
++        ast.GtE: 'Ge',
++    }
+     functions = (
+         'Abs', 'im', 're', 'sign', 'arg', 'conjugate',
+         'acos', 'acot', 'acsc', 'asec', 'asin', 'atan',
+@@ -1117,6 +1125,7 @@ class EvaluateFalseTransformer(ast.NodeTransformer):
+         'cos', 'cot', 'csc', 'sec', 'sin', 'tan',
+         'cosh', 'coth', 'csch', 'sech', 'sinh', 'tanh',
+         'exp', 'ln', 'log', 'sqrt', 'cbrt',
++        'Eq', 'Ne', 'Lt', 'Le', 'Gt', 'Ge',
+     )
+ 
+     def flatten(self, args, func):
+@@ -1186,6 +1195,48 @@ def visit_BinOp(self, node):
+             return new_node
+         return node
+ 
++    def visit_Compare(self, node):
++        if len(node.ops) == 1:
++            op = node.ops[0]
++            if op.__class__ in self.comparisons:
++                sympy_class = self.comparisons[op.__class__]
++                left = self.visit(node.left)
++                right = self.visit(node.comparators[0])
++                return ast.Call(
++                    func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                    args=[left, right],
++                    keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                    starargs=None,
++                    kwargs=None
++                )
++        else:
++            left = self.visit(node.left)
++            args = []
++            for op, comparator in zip(node.ops, node.comparators):
++                if op.__class__ in self.comparisons:
++                    sympy_class = self.comparisons[op.__class__]
++                    right = self.visit(comparator)
++                    args.append(
++                        ast.Call(
++                            func=ast.Name(id=sympy_class, ctx=ast.Load()),
++                            args=[left, right],
++                            keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                            starargs=None,
++                            kwargs=None
++                        )
++                    )
++                    left = right
++                else:
++                    return node
++            return ast.Call(
++                func=ast.Name(id='And', ctx=ast.Load()),
++                args=self.flatten(args, 'And'),
++                keywords=[ast.keyword(arg='evaluate', value=ast.NameConstant(value=False, ctx=ast.Load()))],
++                starargs=None,
++                kwargs=None
++            )
++        return node
++
+     def visit_Call(self, node):
+         new_node = self.generic_visit(node)
+         if isinstance(node.func, ast.Name) and node.func.id in self.functions:

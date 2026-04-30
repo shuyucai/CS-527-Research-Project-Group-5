@@ -1,0 +1,58 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 0000000000..f99781121f
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,52 @@
++import os
++import django
++from django.conf import settings
++
++if not settings.configured:
++    settings.configure(
++        INSTALLED_APPS=[
++            'django.contrib.contenttypes',
++            'django.contrib.auth',
++            'testapp',
++        ],
++        DATABASES={
++            'default': {
++                'ENGINE': 'django.db.backends.sqlite3',
++                'NAME': ':memory:',
++            }
++        }
++    )
++    django.setup()
++
++from django.db import models
++from django.db.migrations.autodetector import MigrationAutodetector
++from django.db.migrations.state import ModelState, ProjectState
++import unittest
++
++class CustomFKField(models.ForeignKey):
++    def __init__(self, *args, **kwargs):
++        kwargs['to'] = 'testapp.HardcodedModel'
++        super().__init__(*args, **kwargs)
++    def deconstruct(self):
++        name, path, args, kwargs = super().deconstruct()
++        if "to" in kwargs:
++            del kwargs["to"]
++        return name, path, args, kwargs
++
++class ReproTestCase(unittest.TestCase):
++    def test_reproduction(self):
++        before = ProjectState()
++        before.add_model(ModelState('testapp', 'HardcodedModel', []))
++        after = ProjectState()
++        after.add_model(ModelState('testapp', 'HardcodedModel', []))
++        after.add_model(ModelState('testapp', 'TestModel', [('custom', CustomFKField(on_delete=models.CASCADE))]))
++        
++        autodetector = MigrationAutodetector(before, after)
++        # The traceback indicated generate_renamed_models -> only_relation_agnostic_fields
++        # _detect_changes calls generate_renamed_models
++        changes = autodetector._detect_changes()
++        self.assertIn('testapp', changes)
++        self.assertEqual(len(changes['testapp']), 1)
++
++if __name__ == "__main__":
++    unittest.main()

@@ -1,0 +1,54 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000000..f7fb8aa3ae
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,48 @@
++import django
++from django.conf import settings
++import sys
++
++if not settings.configured:
++    settings.configure()
++    django.setup()
++
++from django.db import models
++from django.db.migrations.autodetector import MigrationAutodetector
++from django.db.migrations.state import ModelState, ProjectState
++
++class CustomFKField(models.ForeignKey):
++    def __init__(self, *args, **kwargs):
++        kwargs['to'] = 'testapp.HardcodedModel'
++        super().__init__(*args, **kwargs)
++    def deconstruct(self):
++        name, path, args, kwargs = super().deconstruct()
++        if "to" in kwargs:
++            del kwargs["to"]
++        return name, path, args, kwargs
++
++def test_reproduction():
++    before = ProjectState()
++    before.add_model(ModelState('testapp', 'HardcodedModel', []))
++    after = ProjectState()
++    after.add_model(ModelState('testapp', 'HardcodedModel', []))
++    after.add_model(ModelState('testapp', 'TestModel', [('custom', CustomFKField(on_delete=models.CASCADE))]))
++    
++    autodetector = MigrationAutodetector(before, after)
++    changes = autodetector._detect_changes()
++    print("Changes detected successfully!")
++
++if __name__ == "__main__":
++    try:
++        test_reproduction()
++    except KeyError as e:
++        if str(e) == "'to'":
++            print(f"Caught expected KeyError: {e}")
++            sys.exit(1)
++        else:
++            print(f"Caught unexpected KeyError: {e}")
++            sys.exit(1)
++    except Exception as e:
++        print(f"Caught unexpected exception: {type(e).__name__}: {e}")
++        import traceback
++        traceback.print_exc()
++        sys.exit(1)

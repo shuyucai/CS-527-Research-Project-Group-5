@@ -1,0 +1,28 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000..768d47f
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,22 @@
++import requests
++from requests.auth import HTTPDigestAuth
++
++def test_digest_auth_qop_quotes():
++    auth = HTTPDigestAuth('user', 'pass')
++    auth.chal = {
++        'nonce': 'abc',
++        'realm': 'realm@example.com',
++        'qop': 'auth',
++        'algorithm': 'MD5',
++        'opaque': 'opaque'
++    }
++    header = auth.build_digest_header('GET', 'http://example.com/')
++    print(f'Generated header: {header}')
++    if 'qop="auth"' in header:
++        print('Success: qop is quoted')
++    else:
++        print('Failure: qop is NOT quoted')
++        exit(1)
++
++if __name__ == '__main__':
++    test_digest_auth_qop_quotes()

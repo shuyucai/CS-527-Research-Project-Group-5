@@ -1,0 +1,51 @@
+diff --git a/check_val.py b/check_val.py
+new file mode 100644
+index 0000000000..657a63b74d
+--- /dev/null
++++ b/check_val.py
+@@ -0,0 +1,4 @@
++from sympy import sqrt, I, Symbol
++x = Symbol('x')
++expr = (3 - sqrt(2)*sqrt(4 + 3*I) + 3*I)/2
++print('expr =', expr)
+diff --git a/debug_sqrtdenest.py b/debug_sqrtdenest.py
+new file mode 100644
+index 0000000000..d7cc741a4f
+--- /dev/null
++++ b/debug_sqrtdenest.py
+@@ -0,0 +1,3 @@
++from sympy import sqrtdenest, sqrt, I
++expr = (3 - sqrt(2)*sqrt(4 + 3*I) + 3*I)/2
++print('Value:', expr)
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000000..0c99401c86
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,24 @@
++from sympy import sqrt, I, sqrtdenest
++expr = (3 - sqrt(2)*sqrt(4 + 3*I) + 3*I)/2
++# Since I doesn't trigger it, let's try something else.
++# Looking at the traceback:
++#   File "sympy\simplify\sqrtdenest.py", line 132, in sqrtdenest
++#     z = _sqrtdenest0(expr)
++#   File "sympy\simplify\sqrtdenest.py", line 242, in _sqrtdenest0
++#     return expr.func(*[_sqrtdenest0(a) for a in args])
++# ...
++#   File "sympy\simplify
+adsimp.py", line 1032, in split_surds
++#     g, b1, b2 = _split_gcd(*surds)
++#   File "sympy\simplify
+adsimp.py", line 1068, in _split_gcd
++#     g = a[0]
++# IndexError: tuple index out of range
++
++# This means surds was empty in split_surds.
++from sympy.simplify.radsimp import split_surds
++try:
++    from sympy import Symbol
++    x = Symbol('x')
++    split_surds(x)
++except Exception as e:
++    import traceback
++    traceback.print_exc()

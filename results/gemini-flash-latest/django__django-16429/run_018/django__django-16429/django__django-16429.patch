@@ -1,0 +1,33 @@
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..f582d0e4f2 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -97,6 +97,7 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+             d.hour,
+             d.minute,
+             d.second,
++            tzinfo=d.tzinfo,
+         )
+     else:
+         pivot = d
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 0000000000..9cff69a2df
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,14 @@
++import datetime
++import sys
++sys.path.insert(0, '/testbed')
++from django.conf import settings
++if not settings.configured:
++    settings.configure(USE_TZ=True)
++from django.utils import timezone
++from django.utils.timesince import timesince
++now = timezone.now()
++d = now - datetime.timedelta(days=33)
++try:
++    print(timesince(d))
++except TypeError as e:
++    print(f'Caught TypeError: {e}')
+\ No newline at end of file

@@ -1,0 +1,36 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000000..727bbd4903
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,30 @@
++import os
++import datetime
++import django
++from django.conf import settings
++
++if not settings.configured:
++    settings.configure(USE_TZ=True)
++    django.setup()
++
++from django.utils import timezone
++from django.utils.timesince import timesince
++
++def reproduce():
++    now = timezone.now()
++    d = now - datetime.timedelta(days=31)
++    
++    print(f'now: {now} (aware: {timezone.is_aware(now)})')
++    print(f'd:   {d} (aware: {timezone.is_aware(d)})')
++    
++    try:
++        result = timesince(d)
++        print(f'Result: {result}')
++    except TypeError as e:
++        print(f'Error: {e}')
++        import traceback
++        traceback.print_exc()
++
++if __name__ == "__main__":
++    reproduce()
++

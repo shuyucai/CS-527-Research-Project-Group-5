@@ -1,0 +1,86 @@
+diff --git a/django/utils/timesince.py b/django/utils/timesince.py
+index 701c49bab9..4a5407e979 100644
+--- a/django/utils/timesince.py
++++ b/django/utils/timesince.py
+@@ -96,7 +96,7 @@ def timesince(d, now=None, reversed=False, time_strings=None, depth=2):
+             min(MONTHS_DAYS[pivot_month - 1], d.day),
+             d.hour,
+             d.minute,
+-            d.second,
++            d.second, tzinfo=d.tzinfo,
+         )
+     else:
+         pivot = d
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000000..64a9304bad
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,26 @@
++import datetime
++import os
++import django
++from django.conf import settings
++
++if not settings.configured:
++    settings.configure(USE_TZ=True, TIME_ZONE="UTC")
++    django.setup()
++
++from django.utils.timesince import timesince
++from django.utils import timezone
++
++def test_long_interval_with_tz():
++    print("Testing timesince with long interval and USE_TZ=True...")
++    now = timezone.now()
++    d = now - datetime.timedelta(days=31)
++    try:
++        result = timesince(d)
++        print(f"Result: {result}")
++    except TypeError as e:
++        print(f"Caught expected TypeError: {e}")
++    except Exception as e:
++        print(f"Caught unexpected exception: {type(e).__name__}: {e}")
++
++if __name__ == "__main__":
++    test_long_interval_with_tz()
+diff --git a/reproduce_issue_v2.py b/reproduce_issue_v2.py
+new file mode 100644
+index 0000000000..867b0e5554
+--- /dev/null
++++ b/reproduce_issue_v2.py
+@@ -0,0 +1,35 @@
++import datetime
++import os
++import django
++from django.conf import settings
++
++if not settings.configured:
++    settings.configure(USE_TZ=True, TIME_ZONE="UTC")
++    django.setup()
++
++from django.utils.timesince import timesince, timeuntil
++from django.utils import timezone
++
++def test_long_interval_with_tz():
++    print("Testing timesince with long interval and USE_TZ=True...")
++    now = timezone.now()
++    d = now - datetime.timedelta(days=31)
++    try:
++        result = timesince(d)
++        print(f"timesince Result: {result}")
++    except TypeError as e:
++        print(f"timesince Caught expected TypeError: {e}")
++
++def test_long_interval_with_tz_until():
++    print("Testing timeuntil with long interval and USE_TZ=True...")
++    now = timezone.now()
++    d = now + datetime.timedelta(days=31)
++    try:
++        result = timeuntil(d)
++        print(f"timeuntil Result: {result}")
++    except TypeError as e:
++        print(f"timeuntil Caught expected TypeError: {e}")
++
++if __name__ == "__main__":
++    test_long_interval_with_tz()
++    test_long_interval_with_tz_until()

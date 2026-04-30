@@ -1,0 +1,46 @@
+diff --git a/reproduce_debug.py b/reproduce_debug.py
+new file mode 100644
+index 0000000000..68ec789bfc
+--- /dev/null
++++ b/reproduce_debug.py
+@@ -0,0 +1,21 @@
++from sympy import sqrt, I, sqrtdenest, Symbol
++from sympy.simplify.sqrtdenest import _sqrt_match, _mexpand
++from sympy.core.singleton import S
++from sympy.core.ordering import default_sort_key
++
++expr = (3 - sqrt(2)*sqrt(4 + 3*I) + 3*I)/2
++p = _mexpand(expr)
++print('p:', p)
++print('p.is_Add:', p.is_Add)
++if p.is_Add:
++    pargs = sorted(p.args, key=default_sort_key)
++    print('pargs:', pargs)
++    for x in pargs:
++        print(f'x: {x}, x**2: {x**2}, (x**2).is_Rational: {(x**2).is_Rational}')
++
++try:
++    result = sqrtdenest(expr)
++    print('Result:', result)
++except Exception as e:
++    import traceback
++    traceback.print_exc()
+diff --git a/reproduce_error.py b/reproduce_error.py
+new file mode 100644
+index 0000000000..4090adf1fa
+--- /dev/null
++++ b/reproduce_error.py
+@@ -0,0 +1,13 @@
++from sympy import sqrt, I, sqrtdenest
++expr = (3 - sqrt(2)*sqrt(4 + 3*I) + 3*I)/2
++try:
++    result = sqrtdenest(expr)
++    print('Result:', result)
++except IndexError as e:
++    print('Caught expected IndexError:', e)
++    import traceback
++    traceback.print_exc()
++except Exception as e:
++    print('Caught unexpected exception:', type(e).__name__, ':', e)
++    import traceback
++    traceback.print_exc()
