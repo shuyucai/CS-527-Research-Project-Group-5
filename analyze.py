@@ -48,12 +48,12 @@ def analyze_issue(issue_id: str, results_dir: Path) -> dict:
     unique_patches = len(set(patches))
     patch_diversity = unique_patches / len(patches) if patches else 0
 
-    # Time to Success (submitted runs only)
+    # Time to Success (submitted runs only); None when no submissions exist
     times = [r["total_time"] for r in submitted]
-    avg_time = sum(times) / len(times) if times else 0
-    min_time = min(times) if times else 0
-    max_time = max(times) if times else 0
-    time_std = (sum((t - avg_time) ** 2 for t in times) / len(times)) ** 0.5 if times else 0
+    avg_time = sum(times) / len(times) if times else None
+    min_time = min(times) if times else None
+    max_time = max(times) if times else None
+    time_std = (sum((t - avg_time) ** 2 for t in times) / len(times)) ** 0.5 if times else None
 
     # Trajectory Variance: std dev of step counts
     steps = [r["steps"] for r in runs]
@@ -101,8 +101,11 @@ def print_report(results: list[dict]):
     print("%-35s %8s %8s %8s %8s" % ("Issue", "Avg", "Min", "Max", "StdDev"))
     print("-" * 72)
     for r in results:
-        print("%-35s %8.1f %8.1f %8.1f %8.1f" % (
-            r["issue_id"], r["avg_time"], r["min_time"], r["max_time"], r["time_std"]))
+        if r["avg_time"] is None:
+            print("%-35s %8s %8s %8s %8s" % (r["issue_id"], "N/A", "N/A", "N/A", "N/A"))
+        else:
+            print("%-35s %8.1f %8.1f %8.1f %8.1f" % (
+                r["issue_id"], r["avg_time"], r["min_time"], r["max_time"], r["time_std"]))
 
     print("\n--- Trajectory Variance (step count across runs) ---")
     print("%-35s %8s %8s" % ("Issue", "AvgSteps", "StdDev"))
